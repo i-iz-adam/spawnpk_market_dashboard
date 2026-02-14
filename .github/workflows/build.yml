@@ -60,7 +60,7 @@ jobs:
       - name: Create installer with Inno Setup
         uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
         with:
-          path: installer.iss      # your Inno Setup script filename
+          path: installer/installer.iss      # your Inno Setup script filename
           options: /O"output"
 
       - name: Extract version from tag or commit

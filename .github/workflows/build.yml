@@ -67,10 +67,12 @@ jobs:
         id: version
         run: |
           if ("${{ github.ref }}".StartsWith("refs/tags/")) {
-            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            $version = "${{ github.ref_name }}"
           } else {
-            echo "version=${{ needs.check-version.outputs.version-tag }}" >> $GITHUB_OUTPUT
+            $version = "${{ needs.check-version.outputs.version-tag }}"
           }
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "Extracted version: $version"
 
       - name: Create Release
         id: create_release

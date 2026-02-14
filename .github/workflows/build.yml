@@ -2,9 +2,6 @@ name: Build and Release
 
 on:
   push:
-    tags:
-      - 'v*'               # Trigger on tags like v1.0.0, v1.1.0, etc.
-  push:
     branches:
       - main
       - master
@@ -12,6 +9,8 @@ on:
       - '**.md'
       - '.gitignore'
       - '.git/**'
+    tags:
+      - 'v*'               # Trigger on tags like v1.0.0, v1.1.0, etc.
 
 jobs:
   check-version:

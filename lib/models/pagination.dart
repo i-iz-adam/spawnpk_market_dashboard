@@ -1,4 +1,4 @@
-/// Pagination metadata from API responses.
+
 class Pagination {
   const Pagination({
     required this.limit,

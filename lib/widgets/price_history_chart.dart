@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/trade.dart';
 import '../utils/formatters.dart';
 
-/// Line chart showing price history over time.
+
 class PriceHistoryChart extends StatelessWidget {
   const PriceHistoryChart({
     super.key,
@@ -23,18 +23,20 @@ class PriceHistoryChart extends StatelessWidget {
         child: Center(
           child: Text(
             'No trade data for chart',
-            style: TextStyle(color: Colors.grey[500]),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       );
     }
 
-    // Sort by timestamp ascending.
+
     final sorted = List<Trade>.from(trades)..sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
     final spots = <FlSpot>[];
     for (var i = 0; i < sorted.length; i++) {
-      spots.add(FlSpot(i.toDouble(), sorted[i].price));
+      spots.add(FlSpot(i.toDouble(), sorted[i].effectivePrice));
     }
 
     final minX = 0.0;
@@ -56,7 +58,10 @@ class PriceHistoryChart extends StatelessWidget {
               drawVerticalLine: false,
               horizontalInterval: (maxY - minY) / 5,
               getDrawingHorizontalLine: (value) => FlLine(
-                color: Colors.grey.withValues(alpha: 0.2),
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurfaceVariant
+                    .withValues(alpha: 0.2),
                 strokeWidth: 1,
               ),
             ),
@@ -69,7 +74,7 @@ class PriceHistoryChart extends StatelessWidget {
                   getTitlesWidget: (value, meta) => Text(
                     formatPrice(value),
                     style: TextStyle(
-                      color: Colors.grey[500],
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 10,
                     ),
                   ),
@@ -86,7 +91,7 @@ class PriceHistoryChart extends StatelessWidget {
                       return Text(
                         formatDate(sorted[idx].timestamp),
                         style: TextStyle(
-                          color: Colors.grey[500],
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                           fontSize: 10,
                         ),
                       );
@@ -99,6 +104,22 @@ class PriceHistoryChart extends StatelessWidget {
               rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
             ),
             borderData: FlBorderData(show: false),
+              lineTouchData: LineTouchData(
+                touchTooltipData: LineTouchTooltipData(
+                  getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                    return touchedSpots.map((LineBarSpot touchedSpot) {
+                      return LineTooltipItem(
+                        formatPrice(touchedSpot.y),
+                        TextStyle(
+                          color: Theme.of(context).colorScheme.onPrimary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      );
+                    }).toList();
+                  },
+                ),
+              ),
             minX: minX,
             maxX: maxX,
             minY: minY,

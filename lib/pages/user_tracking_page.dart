@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/app_providers.dart';
+import '../theme/app_theme.dart';
+import '../widgets/app_card.dart';
+import '../widgets/section_header.dart';
 
-/// Page for managing tracked usernames and notification settings.
+
 class UserTrackingPage extends ConsumerStatefulWidget {
   const UserTrackingPage({super.key});
 
@@ -43,144 +46,173 @@ class _UserTrackingPageState extends ConsumerState<UserTrackingPage> {
     final pollInterval = ref.watch(pollIntervalProvider);
 
     return Padding(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(AppSpacing.xxl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'User Tracking',
-            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
+          const SectionHeader(
+            title: 'User Tracking',
+            subtitle: 'Get notified when tracked users buy or sell',
+          ),
+          const SizedBox(height: AppSpacing.xl),
+          AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Add Tracked User',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
-          ),
-          const SizedBox(height: 24),
-          // Add user
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Add Tracked User',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
-                          controller: _usernameController,
-                          decoration: InputDecoration(
-                            hintText: 'Username',
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            filled: true,
-                          ),
-                          onSubmitted: (_) => _addUser(),
+                const SizedBox(height: AppSpacing.md),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _usernameController,
+                        decoration: const InputDecoration(
+                          hintText: 'Username',
                         ),
+                        onSubmitted: (_) => _addUser(),
                       ),
-                      const SizedBox(width: 12),
-                      FilledButton.icon(
-                        onPressed: _addUser,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          // Poll interval
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'Notification Poll Interval',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Text('Poll every '),
-                      SizedBox(
-                        width: 80,
-                        child: TextField(
-                          controller: _pollIntervalController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                            border: OutlineInputBorder(),
-                            filled: true,
-                          ),
-                          onSubmitted: (v) {
-                            final n = int.tryParse(v);
-                            if (n != null && n >= 10 && n <= 3600) {
-                              ref.read(pollIntervalProvider.notifier).state = n;
-                              ref.read(storageServiceProvider).setPollIntervalSeconds(n);
-                            } else {
-                              _pollIntervalController.text = pollInterval.toString();
-                            }
-                          },
-                        ),
-                      ),
-                      const Text(' seconds'),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Notifications will check for new trades every $pollInterval seconds',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[500],
                     ),
-                  ),
-                ],
-              ),
+                    const SizedBox(width: AppSpacing.md),
+                    FilledButton.icon(
+                      onPressed: _addUser,
+                      icon: const Icon(Icons.add, size: 20),
+                      label: const Text('Add'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(0, 48),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.xl,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 24),
-          // Tracked users list
+          const SizedBox(height: AppSpacing.xl),
+          AppCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  'Notification Poll Interval',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Row(
+                  children: [
+                    const Text('Poll every '),
+                    SizedBox(
+                      width: 80,
+                      child: TextField(
+                        controller: _pollIntervalController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: AppSpacing.md,
+                            vertical: 10,
+                          ),
+                        ),
+                        onSubmitted: (v) {
+                          final n = int.tryParse(v);
+                          if (n != null && n >= 10 && n <= 3600) {
+                            ref.read(pollIntervalProvider.notifier).state = n;
+                            ref
+                                .read(storageServiceProvider)
+                                .setPollIntervalSeconds(n);
+                          } else {
+                            _pollIntervalController.text =
+                                pollInterval.toString();
+                          }
+                        },
+                      ),
+                    ),
+                    const Text(' seconds'),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'Notifications will check for new trades every $pollInterval seconds',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: AppSpacing.xl),
           Text(
             'Tracked Users',
-            style: Theme.of(context).textTheme.titleMedium,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.md),
           Expanded(
             child: trackedUsersAsync.when(
               data: (users) {
                 if (users.isEmpty) {
                   return Center(
-                    child: Text(
-                      'No tracked users. Add one above.',
-                      style: TextStyle(color: Colors.grey[500]),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.notifications_none,
+                          size: 56,
+                          color: Theme.of(context)
+                              .colorScheme
+                              .onSurfaceVariant
+                              .withValues(alpha: 0.4),
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        Text(
+                          'No tracked users. Add one above.',
+                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurfaceVariant,
+                              ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
                     ),
                   );
                 }
-                return ListView.builder(
-                  itemCount: users.length,
-                  itemBuilder: (context, i) {
-                    final username = users[i];
-                    return _TrackedUserTile(
-                      username: username,
-                      onRemove: () => _removeUser(username),
-                      onTogglePurchases: (v) => _setTrackingPurchases(username, v),
-                      onToggleSales: (v) => _setTrackingSales(username, v),
-                    );
-                  },
+                return Scrollbar(
+                  child: ListView.builder(
+                    itemCount: users.length,
+                    itemBuilder: (context, i) {
+                      final username = users[i];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                        child: _TrackedUserTile(
+                          username: username,
+                          onRemove: () => _removeUser(username),
+                          onTogglePurchases: (v) =>
+                              _setTrackingPurchases(username, v),
+                          onToggleSales: (v) =>
+                              _setTrackingSales(username, v),
+                        ),
+                      );
+                    },
+                  ),
                 );
               },
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(
                 child: Text(
                   'Error: $e',
-                  style: TextStyle(color: Colors.red[300]),
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.error,
+                  ),
                 ),
               ),
             ),
@@ -259,37 +291,76 @@ class _TrackedUserTileState extends ConsumerState<_TrackedUserTile> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        title: Text(
-          widget.username,
-          style: const TextStyle(fontWeight: FontWeight.w500),
-        ),
-        subtitle: Row(
-          children: [
-            FilterChip(
-              label: const Text('Purchases'),
-              selected: _trackPurchases,
-              onSelected: (v) {
-                setState(() => _trackPurchases = v);
-                widget.onTogglePurchases(v);
-              },
+    final theme = Theme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: null,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        hoverColor: theme.colorScheme.primary.withValues(alpha: 0.04),
+        child: Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.lg,
+              vertical: AppSpacing.md,
             ),
-            const SizedBox(width: 8),
-            FilterChip(
-              label: const Text('Sales'),
-              selected: _trackSales,
-              onSelected: (v) {
-                setState(() => _trackSales = v);
-                widget.onToggleSales(v);
-              },
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        widget.username,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.sm),
+                      Wrap(
+                        spacing: AppSpacing.sm,
+                        runSpacing: AppSpacing.sm,
+                        children: [
+                          FilterChip(
+                            label: const Text('Purchases'),
+                            selected: _trackPurchases,
+                            onSelected: (v) {
+                              setState(() => _trackPurchases = v);
+                              widget.onTogglePurchases(v);
+                            },
+                            showCheckmark: true,
+                          ),
+                          FilterChip(
+                            label: const Text('Sales'),
+                            selected: _trackSales,
+                            onSelected: (v) {
+                              setState(() => _trackSales = v);
+                              widget.onToggleSales(v);
+                            },
+                            showCheckmark: true,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(
+                    Icons.delete_outline,
+                    color: theme.colorScheme.error,
+                    size: 22,
+                  ),
+                  onPressed: widget.onRemove,
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(40, 40),
+                  ),
+                  tooltip: 'Remove',
+                ),
+              ],
             ),
-          ],
-        ),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete, color: Colors.red),
-          onPressed: widget.onRemove,
+          ),
         ),
       ),
     );

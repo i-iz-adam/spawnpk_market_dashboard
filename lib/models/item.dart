@@ -1,4 +1,4 @@
-/// Model for an item from the items dump API.
+
 class Item {
   const Item({
     required this.id,

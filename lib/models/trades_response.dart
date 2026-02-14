@@ -2,7 +2,7 @@ import 'item.dart';
 import 'pagination.dart';
 import 'trade.dart';
 
-/// Response from trades API endpoints.
+
 class TradesResponse {
   const TradesResponse({
     this.item,

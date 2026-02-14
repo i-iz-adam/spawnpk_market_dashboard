@@ -1,36 +1,68 @@
 import 'dart:async';
+import 'dart:io';
 
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:windows_notification/windows_notification.dart';
+import 'package:windows_notification/notification_message.dart';
+import 'package:path/path.dart' as path;
 
 import '../models/trade.dart';
 import '../providers/app_providers.dart';
 import '../utils/formatters.dart';
+import 'notification_data_service.dart';
 
-/// Handles Windows desktop notifications for tracked user trades.
+
 class NotificationService {
   NotificationService(this._api, this._storage);
 
   final dynamic _api;
   final dynamic _storage;
 
-  static final FlutterLocalNotificationsPlugin _plugin =
-      FlutterLocalNotificationsPlugin();
+  static WindowsNotification? _winNotify;
+  static String? _iconPath;
+  
+  final NotificationDataService _dataService = NotificationDataService();
 
   Timer? _pollTimer;
-  final Set<String> _lastKnownTradeIds = {};
 
   static Future<void> initialize() async {
-    // Minimal initialization - plugin uses platform defaults
-    const initSettings = InitializationSettings();
-    await _plugin.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: _onNotificationTapped,
-    );
+    print("=== INITIALIZING NOTIFICATION SERVICE ===");
+    
+    if (Platform.isWindows) {
+      try {
+        _winNotify = WindowsNotification(
+          applicationId: r'com.spkmarket.SPKMarket',
+        );
+        
+
+        final possiblePaths = [
+          path.join(Directory.current.path, 'data', 'flutter_assets', 'assets', 'icon.png'),
+          path.join(Directory.current.path, 'assets', 'icon.png'),
+          path.join(path.dirname(Platform.resolvedExecutable), 'data', 'flutter_assets', 'assets', 'icon.png'),
+        ];
+        
+        for (final iconPath in possiblePaths) {
+          if (File(iconPath).existsSync()) {
+            _iconPath = iconPath;
+            print("✓ Found icon at: $_iconPath");
+            break;
+          }
+        }
+        
+        if (_iconPath == null) {
+          print("⚠ Warning: Icon file not found. Notifications will show without icon.");
+        }
+        
+        print("✓ Windows notification initialized successfully");
+      } catch (e) {
+        print("✗ Failed to initialize Windows notification: $e");
+      }
+    }
   }
 
-  static void _onNotificationTapped(NotificationResponse response) {
-    // Optional: handle tap
+
+  Future<void> initializeDataService() async {
+    await _dataService.initialize();
   }
 
   void startPolling() {
@@ -73,35 +105,69 @@ class NotificationService {
         }
       }
     } catch (_) {
-      // Ignore polling errors
+
     }
   }
 
   Future<void> _maybeNotify(Trade t, String username, {required bool isPurchase}) async {
     final id = '${t.id}_${t.timestamp.millisecondsSinceEpoch}';
-    if (_lastKnownTradeIds.contains(id)) return;
-    _lastKnownTradeIds.add(id);
+    
 
-    // Keep set bounded
-    if (_lastKnownTradeIds.length > 500) {
-      final toRemove = _lastKnownTradeIds.take(250).toSet();
-      _lastKnownTradeIds.removeAll(toRemove);
+    if (!_dataService.shouldNotify(id, t.timestamp)) {
+
+      return;
     }
+
+
+
+    await _dataService.markAsNotified(id);
 
     final title = isPurchase ? 'Purchase' : 'Sale';
     final body =
-        '$username: ${t.itemName} @ ${formatPrice(t.price)} x ${formatQuantity(t.quantity)} - ${formatTimestamp(t.timestamp)}';
+        '$username: ${t.itemName} @ ${formatPrice(t.effectivePrice)} x ${formatQuantity(t.quantity)} - ${formatTimestamp(t.timestamp)}';
+    
+    print("Showing notification for $username, $body");
+    
+    if (Platform.isWindows && _winNotify != null) {
+      try {
+        final notificationId = '${t.id.hashCode.abs() % 100000}';
+        
+        final message = NotificationMessage.fromPluginTemplate(
+          notificationId,
+          '$title - $username',
+          body,
+          image: _iconPath,
+        );
+        
+        await _winNotify!.showNotificationPluginTemplate(message);
+        
+      } catch (e) {
+        print("Error showing notification: $e");
+      }
+    }
+  }
 
-    await _plugin.show(
-      t.id.hashCode.abs() % 100000,
-      '$title - $username',
-      body,
-      const NotificationDetails(),
-    );
+
+  Map<String, dynamic> getStats() {
+    return {
+      'notified_count': _dataService.notifiedCount,
+      'is_first_launch': _dataService.isFirstLaunch,
+      'first_launch_time': _dataService.firstLaunchTime?.toIso8601String(),
+    };
+  }
+
+
+  Future<void> clearHistory() async {
+    await _dataService.clearAll();
+  }
+
+
+  Future<void> resetFirstLaunch() async {
+    await _dataService.resetFirstLaunch();
   }
 }
 
-/// Provider for notification service.
+
 final notificationServiceProvider = Provider<NotificationService>((ref) {
   final api = ref.watch(apiServiceProvider);
   final storage = ref.watch(storageServiceProvider);

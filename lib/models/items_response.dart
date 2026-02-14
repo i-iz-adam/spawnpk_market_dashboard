@@ -1,6 +1,6 @@
 import 'item.dart';
 
-/// Response from GET /api/dump/items
+
 class ItemsResponse {
   const ItemsResponse({required this.items});
 

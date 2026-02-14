@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/trade.dart';
 import '../utils/formatters.dart';
 
-/// Bar chart showing activity (volume or trade count) over time.
+
 class ActivityChart extends StatelessWidget {
   const ActivityChart({
     super.key,
@@ -15,7 +15,7 @@ class ActivityChart extends StatelessWidget {
   final List<Trade> trades;
   final double height;
 
-  /// Group trades by date and sum quantity.
+
   Map<String, int> _groupByDate(List<Trade> trades) {
     final map = <String, int>{};
     for (final t in trades) {
@@ -34,7 +34,9 @@ class ActivityChart extends StatelessWidget {
         child: Center(
           child: Text(
             'No activity data',
-            style: TextStyle(color: Colors.grey[500]),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       );
@@ -66,7 +68,7 @@ class ActivityChart extends StatelessWidget {
                         child: Text(
                           entries[idx].key,
                           style: TextStyle(
-                            color: Colors.grey[500],
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                             fontSize: 10,
                           ),
                         ),
@@ -83,7 +85,7 @@ class ActivityChart extends StatelessWidget {
                   getTitlesWidget: (value, meta) => Text(
                     formatQuantity(value.toInt()),
                     style: TextStyle(
-                      color: Colors.grey[500],
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                       fontSize: 10,
                     ),
                   ),
@@ -95,8 +97,11 @@ class ActivityChart extends StatelessWidget {
             gridData: FlGridData(
               show: true,
               drawVerticalLine: false,
-                getDrawingHorizontalLine: (value) => FlLine(
-                  color: Colors.grey.withValues(alpha: 0.2),
+              getDrawingHorizontalLine: (value) => FlLine(
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurfaceVariant
+                    .withValues(alpha: 0.2),
                 strokeWidth: 1,
               ),
             ),

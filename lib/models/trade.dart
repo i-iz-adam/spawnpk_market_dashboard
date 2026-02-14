@@ -1,10 +1,11 @@
-/// Model for a single trade from the trades API.
+
 class Trade {
   const Trade({
     required this.id,
     required this.itemName,
     required this.price,
     required this.quantity,
+    required this.currency,
     required this.buyer,
     required this.seller,
     required this.timestamp,
@@ -15,10 +16,16 @@ class Trade {
   final String itemName;
   final double price;
   final int quantity;
+  final int currency;
   final String buyer;
   final String seller;
   final DateTime timestamp;
   final String? type;
+
+
+
+  double get effectivePrice =>
+      currency == 1 ? price * 100_000_000 : price;
 
   bool get isPurchase => type == 'buy' || buyer.isNotEmpty;
   bool get isSale => type == 'sell' || seller.isNotEmpty;
@@ -53,6 +60,7 @@ class Trade {
       itemName: itemName.toString(),
       price: price,
       quantity: quantity,
+      currency: json['currency'] as int? ?? 0,
       buyer: json['buyer'] as String? ?? '',
       seller: json['seller'] as String? ?? '',
       timestamp: timestamp,
@@ -65,6 +73,7 @@ class Trade {
         'item_name': itemName,
         'price': price,
         'quantity': quantity,
+        'currency': currency,
         'buyer': buyer,
         'seller': seller,
         'timestamp': timestamp.toIso8601String(),

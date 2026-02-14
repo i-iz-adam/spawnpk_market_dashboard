@@ -2,7 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-/// A search field that debounces input and optionally shows autocomplete suggestions.
+import '../theme/app_theme.dart';
+
+
 class DebouncedSearchField extends StatefulWidget {
   const DebouncedSearchField({
     super.key,
@@ -10,6 +12,7 @@ class DebouncedSearchField extends StatefulWidget {
     this.hintText = 'Search...',
     this.suggestions = const [],
     this.onSuggestionSelected,
+    this.onSubmitted,
     this.debounceDuration = const Duration(milliseconds: 300),
     this.controller,
   });
@@ -18,6 +21,7 @@ class DebouncedSearchField extends StatefulWidget {
   final String hintText;
   final List<String> suggestions;
   final ValueChanged<String>? onSuggestionSelected;
+  final ValueChanged<String>? onSubmitted;
   final Duration debounceDuration;
   final TextEditingController? controller;
 
@@ -31,6 +35,7 @@ class _DebouncedSearchFieldState extends State<DebouncedSearchField> {
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlayEntry;
   bool _showSuggestions = false;
+  bool _isSelectingSuggestion = false; // Add this flag
 
   @override
   void initState() {
@@ -52,6 +57,10 @@ class _DebouncedSearchFieldState extends State<DebouncedSearchField> {
 
   void _onTextChanged() {
     if (mounted) setState(() {});
+    
+
+    if (_isSelectingSuggestion) return;
+    
     _debounce?.cancel();
     _debounce = Timer(widget.debounceDuration, () {
       if (!mounted) return;
@@ -81,45 +90,73 @@ class _DebouncedSearchFieldState extends State<DebouncedSearchField> {
   }
 
   void _showOverlay() {
-    _removeOverlay();
-    _overlayEntry = OverlayEntry(
-      builder: (context) => Positioned(
-        width: _getOverlayWidth(),
-        child: CompositedTransformFollower(
-          link: _layerLink,
-          showWhenUnlinked: false,
-          offset: Offset(0, _getOverlayHeight()),
-          child: Material(
-            elevation: 8,
-            borderRadius: BorderRadius.circular(8),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 250),
-              child: ListView.builder(
-                shrinkWrap: true,
-                padding: EdgeInsets.zero,
-                itemCount: _filteredSuggestions.length,
-                itemBuilder: (context, index) {
-                  final s = _filteredSuggestions[index];
-                  return ListTile(
-                    dense: true,
-                    title: Text(s),
-                    onTap: () {
-                      _controller.text = s;
-                      _controller.selection = TextSelection.collapsed(offset: s.length);
-                      widget.onSuggestionSelected?.call(s);
-                      widget.onChanged(s);
-                      _removeOverlay();
+  _removeOverlay();
+  final overlayState = Overlay.of(context);
+  _overlayEntry = OverlayEntry(
+    builder: (context) => Stack(
+      children: [
+
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent, // Changed from opaque
+            onTap: _removeOverlay,
+            child: Container(color: Colors.transparent), // Add transparent container
+          ),
+        ),
+        Positioned(
+          width: _getOverlayWidth(),
+          child: CompositedTransformFollower(
+            link: _layerLink,
+            showWhenUnlinked: false,
+            offset: Offset(0, _getOverlayHeight()),
+            child: GestureDetector(
+              onTap: () {}, // Prevent taps from passing through to barrier
+              child: Material(
+                elevation: 8,
+                shadowColor: Colors.black38,
+                borderRadius: BorderRadius.circular(AppRadius.md),
+                color: Theme.of(context).colorScheme.surface,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 250),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: _filteredSuggestions.length,
+                    itemBuilder: (context, index) {
+                      final s = _filteredSuggestions[index];
+                      return ListTile(
+                        dense: true,
+                        title: Text(s),
+                        onTap: () {
+                          print('Item tapped: $s');
+                          _selectSuggestion(s);
+                        },
+                      );
                     },
-                  );
-                },
+                  ),
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
-    Overlay.of(context).insert(_overlayEntry!);
-  }
+      ],
+    ),
+  );
+  overlayState.insert(_overlayEntry!);
+}
+
+void _selectSuggestion(String s) {
+  print('_selectSuggestion called with: $s');
+  _isSelectingSuggestion = true;
+  _controller.text = s;
+  _controller.selection = TextSelection.collapsed(offset: s.length);
+  _isSelectingSuggestion = false;
+  
+  _removeOverlay();
+  
+  widget.onSuggestionSelected?.call(s);
+  widget.onChanged(s);
+}
 
   double _getOverlayWidth() {
     final box = context.findRenderObject() as RenderBox?;
@@ -145,10 +182,10 @@ class _DebouncedSearchFieldState extends State<DebouncedSearchField> {
         controller: _controller,
         decoration: InputDecoration(
           hintText: widget.hintText,
-          prefixIcon: const Icon(Icons.search),
+          prefixIcon: const Icon(Icons.search, size: 22),
           suffixIcon: _controller.text.isNotEmpty
               ? IconButton(
-                  icon: const Icon(Icons.clear),
+                  icon: const Icon(Icons.clear, size: 20),
                   onPressed: () {
                     _controller.clear();
                     widget.onChanged('');
@@ -156,11 +193,13 @@ class _DebouncedSearchFieldState extends State<DebouncedSearchField> {
                   },
                 )
               : null,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-          filled: true,
         ),
+        onSubmitted: widget.onSubmitted != null
+            ? (v) {
+                _removeOverlay();
+                widget.onSubmitted!(v.trim());
+              }
+            : null,
         onTapOutside: (_) => _removeOverlay(),
       ),
     );

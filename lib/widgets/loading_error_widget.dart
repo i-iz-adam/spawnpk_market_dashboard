@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-/// Shows loading spinner or error message.
+import '../theme/app_theme.dart';
+
+
 class LoadingErrorWidget<T> extends StatelessWidget {
   const LoadingErrorWidget({
     super.key,
@@ -18,6 +20,7 @@ class LoadingErrorWidget<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return asyncValue.when(
       data: (data) => dataBuilder(data),
       loading: () => Center(
@@ -25,10 +28,12 @@ class LoadingErrorWidget<T> extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const CircularProgressIndicator(),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.lg),
             Text(
               loadingMessage,
-              style: TextStyle(color: Colors.grey[400]),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -37,16 +42,22 @@ class LoadingErrorWidget<T> extends StatelessWidget {
           ? errorBuilder!(e, st)
           : Center(
               child: Padding(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.all(AppSpacing.xl),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.error_outline, size: 48, color: Colors.red[300]),
-                    const SizedBox(height: 16),
+                    Icon(
+                      Icons.error_outline,
+                      size: 48,
+                      color: theme.colorScheme.error,
+                    ),
+                    const SizedBox(height: AppSpacing.lg),
                     Text(
                       'Error: ${e.toString()}',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
                   ],
                 ),

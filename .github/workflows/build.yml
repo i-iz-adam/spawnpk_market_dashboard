@@ -66,8 +66,8 @@ jobs:
       - name: Extract version from tag or commit
         id: version
         run: |
-          if startsWith(github.ref, 'refs/tags/') {
-            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          if ("${{ github.ref }}".StartsWith("refs/tags/")) {
+            echo "version=${{ github.ref_name }}" >> $GITHUB_OUTPUT
           } else {
             echo "version=${{ needs.check-version.outputs.version-tag }}" >> $GITHUB_OUTPUT
           }

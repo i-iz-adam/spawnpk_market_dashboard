@@ -1,0 +1,102 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'               # Trigger on tags like v1.0.0, v1.1.0, etc.
+  push:
+    branches:
+      - main
+      - master
+    paths-ignore:
+      - '**.md'
+      - '.gitignore'
+      - '.git/**'
+
+jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    outputs:
+      should-release: ${{ steps.version-check.outputs.should-release }}
+      version-tag: ${{ steps.version-check.outputs.version-tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          
+      - name: Check for version in commit message
+        id: version-check
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+          echo "Commit message: $COMMIT_MSG"
+          
+          # Check if commit message contains version pattern like v1.1.0
+          if echo "$COMMIT_MSG" | grep -E 'v[0-9]+\.[0-9]+\.[0-9]+'; then
+            VERSION=$(echo "$COMMIT_MSG" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            echo "should-release=true" >> $GITHUB_OUTPUT
+            echo "version-tag=$VERSION" >> $GITHUB_OUTPUT
+            echo "Found version: $VERSION"
+          else
+            echo "should-release=false" >> $GITHUB_OUTPUT
+            echo "No version found in commit message"
+          fi
+
+  build:
+    needs: check-version
+    runs-on: windows-latest
+    if: needs.check-version.outputs.should-release == 'true' || startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Build Windows executable
+        run: |
+          flutter config --enable-windows-desktop
+          flutter build windows --release
+
+      - name: Create installer with Inno Setup
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
+        with:
+          path: installer.iss      # your Inno Setup script filename
+          options: /O"output"
+
+      - name: Extract version from tag or commit
+        id: version
+        run: |
+          if startsWith(github.ref, 'refs/tags/') {
+            echo "version=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          } else {
+            echo "version=${{ needs.check-version.outputs.version-tag }}" >> $GITHUB_OUTPUT
+          }
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          release_name: SpawnPK Market Dashboard ${{ steps.version.outputs.version }}
+          body: |
+            ## Changes in ${{ steps.version.outputs.version }}
+            
+            This release was automatically created from commit: ${{ github.sha }}
+            
+            ### Installation
+            Download `SpawnPKMarketDashboardSetup.exe` below and run it to install or update the application.
+          draft: false
+          prerelease: false
+
+      - name: Upload installer as release asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: output/SpawnPKMarketDashboardSetup.exe
+          asset_name: SpawnPKMarketDashboardSetup.exe
+          asset_content_type: application/octet-stream

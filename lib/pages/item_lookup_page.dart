@@ -8,17 +8,32 @@ import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 import '../widgets/app_card.dart';
 import '../widgets/app_summary_card.dart';
-import '../widgets/debounced_search_field.dart';
 import '../widgets/loading_error_widget.dart';
 import '../widgets/price_history_chart.dart';
 import '../widgets/section_header.dart';
 
-
-class ItemLookupPage extends ConsumerWidget {
+class ItemLookupPage extends ConsumerStatefulWidget {
   const ItemLookupPage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ItemLookupPage> createState() => _ItemLookupPageState();
+}
+
+class _ItemLookupPageState extends ConsumerState<ItemLookupPage> {
+
+
+  TextEditingController? _autocompleteController;
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void dispose() {
+    _focusNode.dispose();
+
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final itemNamesAsync = ref.watch(itemNamesProvider);
     final selectedItem = ref.watch(selectedItemProvider);
     final page = ref.watch(itemTradesPageProvider);
@@ -34,30 +49,95 @@ class ItemLookupPage extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.xl),
           itemNamesAsync.when(
-            data: (names) => DebouncedSearchField(
-              hintText: 'Search items...',
-              suggestions: names,
-              onSuggestionSelected: (s) {
-                print('onSuggestionSelected called with: $s');
-                ref.read(selectedItemProvider.notifier).state = s;
-                print('selectedItemProvider set to: $s');
+            data: (names) => RawAutocomplete<String>(
+              optionsBuilder: (textEditingValue) {
+                if (textEditingValue.text.isEmpty) {
+                  return const Iterable<String>.empty();
+                }
+
+                return names.where(
+                  (name) => name.toLowerCase().contains(
+                        textEditingValue.text.toLowerCase(),
+                      ),
+                );
+              },
+              onSelected: (selection) {
+                print('onSelected called with: $selection');
+
+                _autocompleteController?.text = selection;
+
+                ref.read(selectedItemProvider.notifier).state = selection;
                 ref.read(itemTradesPageProvider.notifier).state = 1;
-                print('Page reset to 1');
+
+                _focusNode.unfocus();
               },
-              onSubmitted: (query) {
-                final q = query.trim();
-                if (q.isEmpty) return;
-                final match =
-                    names.where((n) => n.toLowerCase() == q.toLowerCase()).toList();
-                if (match.isNotEmpty) {
-                  ref.read(selectedItemProvider.notifier).state = match.first;
-                  ref.read(itemTradesPageProvider.notifier).state = 1;
-                }
+              fieldViewBuilder: (
+                BuildContext context,
+                TextEditingController textController,
+                FocusNode focusNode,
+                VoidCallback onFieldSubmitted,
+              ) {
+
+                _autocompleteController = textController;
+
+                return TextField(
+                  controller: textController, // Use the provided controller
+                  focusNode: focusNode,
+                  onSubmitted: (value) {
+
+                    final q = value.trim();
+                    if (q.isEmpty) return;
+                    final match = names.where((n) => n.toLowerCase() == q.toLowerCase()).toList();
+                    if (match.isNotEmpty) {
+                      textController.text = match.first;
+                      ref.read(selectedItemProvider.notifier).state = match.first;
+                      ref.read(itemTradesPageProvider.notifier).state = 1;
+                      focusNode.unfocus();
+                    }
+                  },
+                  onChanged: (query) {
+
+                    if (query.trim().isEmpty) {
+                      ref.read(selectedItemProvider.notifier).state = null;
+                    }
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Search items...',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                    ),
+                  ),
+                );
               },
-              onChanged: (query) {
-                if (query.trim().isEmpty) {
-                  ref.read(selectedItemProvider.notifier).state = null;
-                }
+              optionsViewBuilder: (
+                BuildContext context,
+                AutocompleteOnSelected<String> onSelected,
+                Iterable<String> options,
+              ) {
+                return Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 4,
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    child: SizedBox(
+                      width: 400, // Adjust width as needed
+                      child: ListView.builder(
+                        padding: EdgeInsets.zero,
+                        shrinkWrap: true,
+                        itemCount: options.length,
+                        itemBuilder: (BuildContext context, int index) {
+                          final option = options.elementAt(index);
+                          return ListTile(
+                            title: Text(option),
+                            onTap: () {
+                              onSelected(option);
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                );
               },
             ),
             loading: () => TextField(
@@ -97,6 +177,9 @@ class ItemLookupPage extends ConsumerWidget {
     );
   }
 }
+
+
+
 
 class _EmptyState extends StatelessWidget {
   const _EmptyState({required this.icon, required this.message});

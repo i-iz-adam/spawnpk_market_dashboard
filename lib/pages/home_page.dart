@@ -5,6 +5,7 @@ import '../theme/app_theme.dart';
 import 'item_lookup_page.dart';
 import 'user_lookup_page.dart';
 import 'user_tracking_page.dart';
+import 'update_page.dart';
 
 
 class HomePage extends ConsumerStatefulWidget {
@@ -21,6 +22,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     ItemLookupPage(),
     UserLookupPage(),
     UserTrackingPage(),
+    UpdatePage(),
   ];
 
   @override
@@ -151,6 +153,11 @@ class _HomePageState extends ConsumerState<HomePage> {
             icon: Icon(Icons.notifications_outlined),
             selectedIcon: Icon(Icons.notifications_active),
             label: Text('Tracking'),
+          ),
+          NavigationRailDestination(
+            icon: Icon(Icons.system_update_outlined),
+            selectedIcon: Icon(Icons.system_update),
+            label: Text('Updates'),
           ),
         ],
       ),

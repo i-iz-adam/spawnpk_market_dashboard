@@ -33,6 +33,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   flutter_riverpod: ^2.6.1
   dio: ^5.7.0
+  http: ^1.2.2
+  package_info_plus: ^8.0.2
   fl_chart: ^0.69.2
   shared_preferences: ^2.3.3
   flutter_local_notifications: ^18.0.1

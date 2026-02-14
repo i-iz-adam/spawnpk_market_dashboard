@@ -71,17 +71,20 @@ jobs:
           } else {
             $version = "${{ needs.check-version.outputs.version-tag }}"
           }
+          if ([string]::IsNullOrEmpty($version)) {
+            Write-Error "Version could not be extracted. Aborting."
+            exit 1
+          }
           echo "version=$version" >> $GITHUB_OUTPUT
           echo "Extracted version: $version"
+        shell: pwsh
 
       - name: Create Release
         id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.version }}
-          release_name: SpawnPK Market Dashboard ${{ steps.version.outputs.version }}
+          name: SpawnPK Market Dashboard ${{ steps.version.outputs.version }}
           body: |
             ## Changes in ${{ steps.version.outputs.version }}
             
@@ -89,8 +92,11 @@ jobs:
             
             ### Installation
             Download `SpawnPKMarketDashboardSetup.exe` below and run it to install or update the application.
+          files: output/SpawnPKMarketDashboardSetup.exe
           draft: false
           prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload installer as release asset
         uses: actions/upload-release-asset@v1

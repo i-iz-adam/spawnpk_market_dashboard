@@ -40,51 +40,51 @@ jobs:
           fi
 
   build:
-    needs: check-version
-    runs-on: windows-latest
-    if: needs.check-version.outputs.should-release == 'true' || startsWith(github.ref, 'refs/tags/')
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
+  needs: check-version
+  runs-on: windows-latest
+  if: needs.check-version.outputs.should-release == 'true' || startsWith(github.ref, 'refs/tags/')
+  outputs:
+    version: ${{ steps.version.outputs.version }}
+  steps:
+    - uses: actions/checkout@v4
 
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: stable
 
-      - name: Build Windows executable
-        run: |
-          flutter config --enable-windows-desktop
-          flutter build windows --release
+    - name: Build Windows executable
+      run: |
+        flutter config --enable-windows-desktop
+        flutter build windows --release
 
-      - name: Create installer with Inno Setup
-        uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
-        with:
-          path: installer/installer.iss
-          options: /O"output"
+    - name: Create installer with Inno Setup
+      uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
+      with:
+        path: installer/installer.iss
+        options: /O"output"
 
-      - name: Extract version from tag or commit
-        id: version
-        run: |
-          if ("${{ github.ref }}".StartsWith("refs/tags/")) {
-            $version = "${{ github.ref_name }}"
-          } else {
-            $version = "${{ needs.check-version.outputs.version-tag }}"
-          }
-          if ([string]::IsNullOrEmpty($version)) {
-            Write-Error "Version could not be extracted. Aborting."
-            exit 1
-          }
-          echo "version=$version" >> $GITHUB_OUTPUT
-          echo "Extracted version: $version"
-        shell: pwsh
+    - name: Extract version from tag or commit
+      id: version
+      run: |
+        if ("${{ github.ref }}".StartsWith("refs/tags/")) {
+          $version = "${{ github.ref_name }}"
+        } else {
+          $version = "${{ needs.check-version.outputs.version-tag }}"
+        }
+        if ([string]::IsNullOrEmpty($version)) {
+          Write-Error "Version could not be extracted. Aborting."
+          exit 1
+        }
+        "version=$version" >> $env:GITHUB_OUTPUT
+        echo "Extracted version: $version"
+      shell: pwsh
 
-      - name: Upload installer as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: installer
-          path: output/SpawnPKMarketDashboardSetup.exe
+    - name: Upload installer as artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: installer
+        path: output/SpawnPKMarketDashboardSetup.exe
 
   release:
     needs: build

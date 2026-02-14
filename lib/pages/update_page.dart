@@ -82,7 +82,7 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
     try {
       final downloadPath = UpdateService.getInstallerDownloadPath();
       
-      // Simulate download progress (in a real app, you'd track actual progress)
+
       for (int i = 0; i <= 100; i += 10) {
         await Future.delayed(Duration(milliseconds: 200));
         if (mounted) {
@@ -134,7 +134,7 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
           TextButton(
             onPressed: () {
               Navigator.of(context).pop();
-              // Exit the app so the installer can replace files
+
               if (Platform.isWindows) {
                 exit(0);
               }

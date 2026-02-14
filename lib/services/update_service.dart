@@ -59,11 +59,11 @@ class UpdateService {
       if (response.statusCode == 200) {
         final release = GitHubRelease.fromJson(json.decode(response.body));
         
-        // Get current version
+
         final packageInfo = await PackageInfo.fromPlatform();
         final currentVersion = 'v${packageInfo.version}';
         
-        // Compare versions
+
         if (_isNewerVersion(release.tagName, currentVersion)) {
           return release;
         }
@@ -75,14 +75,14 @@ class UpdateService {
   }
 
   static bool _isNewerVersion(String latest, String current) {
-    // Remove 'v' prefix and compare
+
     final latestClean = latest.startsWith('v') ? latest.substring(1) : latest;
     final currentClean = current.startsWith('v') ? current.substring(1) : current;
     
     final latestParts = latestClean.split('.').map(int.parse).toList();
     final currentParts = currentClean.split('.').map(int.parse).toList();
     
-    // Pad with zeros if needed
+
     while (latestParts.length < 3) {
       latestParts.add(0);
     }
@@ -116,7 +116,7 @@ class UpdateService {
   static Future<bool> installUpdate(String installerPath) async {
     try {
       if (Platform.isWindows) {
-        // Run the installer silently and exit the current app
+
         await Process.run(installerPath, ['/SILENT']);
         return true;
       }
@@ -152,7 +152,7 @@ class UpdateService {
     final lastCheck = await getLastCheckTime();
     if (lastCheck == null) return true;
     
-    // Check at most once per day
+
     final now = DateTime.now();
     final difference = now.difference(lastCheck);
     return difference.inHours >= 24;

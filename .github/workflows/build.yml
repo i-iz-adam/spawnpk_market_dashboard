@@ -87,30 +87,46 @@ jobs:
           path: output/SpawnPKMarketDashboardSetup.exe
 
   release:
-    needs: build
-    runs-on: ubuntu-latest
-    if: success()
-    steps:
-      - name: Download installer artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: installer
-          path: output/
+  needs: build
+  runs-on: ubuntu-latest
+  if: success()
+  permissions:
+    contents: write  # Required to create tags and releases
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Get all history for tagging
 
-      - name: Create Release and Upload Asset
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.build.outputs.version }}    # 👈 Now safe – evaluated before job runs
-          name: SpawnPK Market Dashboard ${{ needs.build.outputs.version }}
-          body: |
-            ## Changes in ${{ needs.build.outputs.version }}
+    - name: Create and push tag
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git tag -a "${{ needs.build.outputs.version }}" -m "Release ${{ needs.build.outputs.version }}"
+        git push origin "${{ needs.build.outputs.version }}"
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-            This release was automatically created from commit: ${{ github.sha }}
+    - name: Download installer artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: installer
+        path: output/
 
-            ### Installation
-            Download `SpawnPKMarketDashboardSetup.exe` below and run it to install or update the application.
-          files: output/SpawnPKMarketDashboardSetup.exe
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Create Release and Upload Asset
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ needs.build.outputs.version }}
+        name: SpawnPK Market Dashboard ${{ needs.build.outputs.version }}
+        body: |
+          ## Changes in ${{ needs.build.outputs.version }}
+
+          This release was automatically created from commit: ${{ github.sha }}
+
+          ### Installation
+          Download `SpawnPKMarketDashboardSetup.exe` below and run it to install or update the application.
+        files: output/SpawnPKMarketDashboardSetup.exe
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

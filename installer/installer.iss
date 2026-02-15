@@ -1,5 +1,5 @@
 #define MyAppName "SpawnPK Market Dashboard"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.2.2"
 #define MyAppPublisher "SpawnPK"
 #define MyAppExeName "spawnpk_market_dashboard.exe"
 

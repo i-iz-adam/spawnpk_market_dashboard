@@ -64,6 +64,9 @@ jobs:
         with:
           channel: stable
 
+      - name: Setup NuGet
+        uses: nuget/setup-nuget@v2
+
       - name: Get dependencies
         run: flutter pub get
 
@@ -80,30 +83,156 @@ jobs:
       - name: Build Flutter Windows app
         run: flutter build windows --release
 
-      - name: Build Squirrel installer
+      - name: Build Squirrel Release
         shell: pwsh
         run: |
-          Write-Host "Building Squirrel installer..." -ForegroundColor Green
+          $ErrorActionPreference = "Stop"
+          $version = "${{ needs.check-version.outputs.version-number }}"
           
-          # Run the squirrel installer builder
-          dart run squirrel:installer_windows
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host "  Building Squirrel Release Package" -ForegroundColor Cyan
+          Write-Host "  Version: $version" -ForegroundColor Cyan
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host ""
           
-          Write-Host "Squirrel build complete!" -ForegroundColor Green
-          
-          # List the output files
+          # Paths
+          $buildDir = "build\windows\x64\runner\Release"
           $releaseDir = "build\squirrel_release"
+          $tempDir = "$releaseDir\temp"
+          $outputDir = "$releaseDir\output"
+          
+          # Clean and create directories
+          Write-Host "[1/6] Setting up directories..." -ForegroundColor Green
           if (Test-Path $releaseDir) {
-            Write-Host "`nRelease files:" -ForegroundColor Cyan
-            Get-ChildItem $releaseDir -Recurse -File | ForEach-Object {
-              Write-Host "  $($_.FullName)" -ForegroundColor Gray
-            }
+            Remove-Item -Path $releaseDir -Recurse -Force
           }
+          New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $tempDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+          Write-Host "  ✓ Directories ready" -ForegroundColor Green
+          Write-Host ""
+          
+          # Copy build artifacts
+          Write-Host "[2/6] Copying build artifacts..." -ForegroundColor Green
+          $appDir = "$tempDir\lib\net45"
+          New-Item -ItemType Directory -Path $appDir -Force | Out-Null
+          Copy-Item -Path "$buildDir\*" -Destination $appDir -Recurse -Force
+          Write-Host "  ✓ Artifacts copied" -ForegroundColor Green
+          Write-Host ""
+          
+          # Create NuGet spec
+          Write-Host "[3/6] Creating NuGet package..." -ForegroundColor Green
+          $nuspecContent = @"
+          <?xml version="1.0" encoding="utf-8"?>
+          <package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+            <metadata>
+              <id>SpawnPKMarketDashboard</id>
+              <version>$version</version>
+              <title>SpawnPK Market Dashboard</title>
+              <authors>SpawnPK</authors>
+              <description>SpawnPK Market Dashboard - Market analysis and tracking tool</description>
+              <projectUrl>https://github.com/${{ github.repository }}</projectUrl>
+              <requireLicenseAcceptance>false</requireLicenseAcceptance>
+              <copyright>Copyright 2024 SpawnPK</copyright>
+            </metadata>
+          </package>
+          "@
+          
+          $nuspecPath = "$tempDir\SpawnPKMarketDashboard.nuspec"
+          $nuspecContent | Out-File -FilePath $nuspecPath -Encoding utf8
+          Write-Host "  ✓ NuGet spec created" -ForegroundColor Green
+          
+          # Build NuGet package
+          Write-Host "  Building NuGet package..." -ForegroundColor Yellow
+          Push-Location $tempDir
+          try {
+            nuget pack SpawnPKMarketDashboard.nuspec -NoDefaultExcludes
+            if ($LASTEXITCODE -ne 0) {
+              throw "NuGet pack failed with exit code $LASTEXITCODE"
+            }
+          } finally {
+            Pop-Location
+          }
+          
+          $nupkgFile = "$tempDir\SpawnPKMarketDashboard.$version.nupkg"
+          if (-not (Test-Path $nupkgFile)) {
+            throw "NuGet package not found: $nupkgFile"
+          }
+          Write-Host "  ✓ NuGet package created" -ForegroundColor Green
+          Write-Host ""
+          
+          # Install Squirrel.Windows
+          Write-Host "[4/6] Installing Squirrel.Windows..." -ForegroundColor Green
+          Push-Location $tempDir
+          try {
+            nuget install squirrel.windows -ExcludeVersion
+            if ($LASTEXITCODE -ne 0) {
+              throw "Failed to install Squirrel.Windows"
+            }
+          } finally {
+            Pop-Location
+          }
+          
+          $squirrelExe = "$tempDir\squirrel.windows\tools\Squirrel.exe"
+          if (-not (Test-Path $squirrelExe)) {
+            throw "Squirrel.exe not found at: $squirrelExe"
+          }
+          Write-Host "  ✓ Squirrel.Windows installed" -ForegroundColor Green
+          Write-Host ""
+          
+          # Check for icon
+          Write-Host "[5/6] Checking icon..." -ForegroundColor Green
+          $iconPath = "assets\icon.png"
+          if (Test-Path $iconPath) {
+            Write-Host "  ✓ Icon found: $iconPath" -ForegroundColor Green
+          } else {
+            Write-Host "  ⚠ Icon not found, using default" -ForegroundColor Yellow
+            $iconPath = $null
+          }
+          Write-Host ""
+          
+          # Create Squirrel release
+          Write-Host "[6/6] Creating Squirrel release package..." -ForegroundColor Green
+          Write-Host "  This may take a few minutes..." -ForegroundColor Yellow
+          
+          $releasifyArgs = @(
+            "--releasify", $nupkgFile,
+            "--releaseDir", $outputDir,
+            "--no-msi"
+          )
+          
+          if ($iconPath) {
+            $releasifyArgs += "--setupIcon"
+            $releasifyArgs += $iconPath
+          }
+          
+          & $squirrelExe $releasifyArgs
+          
+          if ($LASTEXITCODE -ne 0) {
+            throw "Squirrel releasify failed with exit code $LASTEXITCODE"
+          }
+          
+          Write-Host "  ✓ Squirrel package created" -ForegroundColor Green
+          Write-Host ""
+          
+          # List output files
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host "  Build Complete!" -ForegroundColor Cyan
+          Write-Host "=====================================" -ForegroundColor Cyan
+          Write-Host ""
+          Write-Host "Output files in: $outputDir" -ForegroundColor Green
+          Write-Host ""
+          Get-ChildItem $outputDir | ForEach-Object {
+            $size = [math]::Round($_.Length / 1MB, 2)
+            Write-Host "  • $($_.Name) ($size MB)" -ForegroundColor Yellow
+          }
+          Write-Host ""
 
       - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: squirrel-release
-          path: build/squirrel_release/**/*
+          path: build/squirrel_release/output/*
 
   release:
     needs: [check-version, build]

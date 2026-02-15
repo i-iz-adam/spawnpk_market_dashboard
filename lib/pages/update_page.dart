@@ -27,9 +27,23 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
   @override
   void initState() {
     super.initState();
+    _initializeUpdateState();
     _loadCurrentVersion();
     _loadDismissedVersion();
     _checkForUpdates();
+  }
+
+  Future<void> _initializeUpdateState() async {
+
+    await UpdateService.verifyUpdateCompletion();
+    
+
+    final isUpdating = await UpdateService.isUpdateInProgress();
+    if (isUpdating) {
+
+      await UpdateService.setUpdateInProgress(false);
+      print('⚠ Update process cleared - likely failed or interrupted');
+    }
   }
 
   Future<void> _loadCurrentVersion() async {
@@ -102,7 +116,7 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
         _isInstalling = true;
       });
 
-      final success = await UpdateService.installUpdate(downloadedPath);
+      final success = await UpdateService.installUpdate(downloadedPath, _latestRelease!.tagName);
       
       if (success) {
         _showInstallSuccessDialog();
@@ -125,16 +139,20 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Update Downloaded'),
+        title: const Text('Update Started'),
         content: const Text(
-          'The update has been downloaded and the installer will now run. '
-          'Please follow the installation prompts to complete the update.',
+          'The update installer has started. The application will now close '
+          'to complete the installation. Please restart the application after '
+          'the installation finishes.',
         ),
         actions: [
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.of(context).pop();
+              
 
+              await UpdateService.setUpdateInProgress(false);
+              
               if (Platform.isWindows) {
                 exit(0);
               }

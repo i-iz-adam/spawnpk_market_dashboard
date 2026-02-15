@@ -45,6 +45,8 @@ class UpdateService {
   static const String _repoName = 'spawnpk_market_dashboard';
   static const String _lastCheckKey = 'last_update_check';
   static const String _dismissedVersionKey = 'dismissed_update_version';
+  static const String _installedVersionKey = 'installed_update_version';
+  static const String _updateInProgressKey = 'update_in_progress';
 
   static Future<GitHubRelease?> checkForUpdates() async {
     try {
@@ -60,10 +62,26 @@ class UpdateService {
         final release = GitHubRelease.fromJson(json.decode(response.body));
         
 
+        final installedVersion = await getInstalledVersion();
+        if (installedVersion != null && installedVersion == release.tagName) {
+
+          await clearInstalledVersion();
+          return null;
+        }
+
         final packageInfo = await PackageInfo.fromPlatform();
         final currentVersion = 'v${packageInfo.version}';
         
 
+        final isUpdating = await isUpdateInProgress();
+        if (isUpdating) {
+
+          final attemptedVersion = await getInstalledVersion();
+          if (attemptedVersion != null && attemptedVersion == release.tagName) {
+            return null; // Don't show the same version we just tried to install
+          }
+        }
+        
         if (_isNewerVersion(release.tagName, currentVersion)) {
           return release;
         }
@@ -75,26 +93,58 @@ class UpdateService {
   }
 
   static bool _isNewerVersion(String latest, String current) {
+    try {
+      final latestClean = latest.startsWith('v') ? latest.substring(1) : latest;
+      final currentClean = current.startsWith('v') ? current.substring(1) : current;
+      
 
-    final latestClean = latest.startsWith('v') ? latest.substring(1) : latest;
-    final currentClean = current.startsWith('v') ? current.substring(1) : current;
-    
-    final latestParts = latestClean.split('.').map(int.parse).toList();
-    final currentParts = currentClean.split('.').map(int.parse).toList();
-    
+      if (latestClean.isEmpty || currentClean.isEmpty) {
+        print('Warning: Empty version string detected - latest: "$latestClean", current: "$currentClean"');
+        return false;
+      }
+      
+      final latestParts = latestClean.split('.').map((part) {
+        try {
+          return int.parse(part);
+        } catch (e) {
+          print('Warning: Invalid version part "$part" in version "$latestClean"');
+          return 0;
+        }
+      }).toList();
+      
+      final currentParts = currentClean.split('.').map((part) {
+        try {
+          return int.parse(part);
+        } catch (e) {
+          print('Warning: Invalid version part "$part" in version "$currentClean"');
+          return 0;
+        }
+      }).toList();
+      
 
-    while (latestParts.length < 3) {
-      latestParts.add(0);
+      while (latestParts.length < 3) {
+        latestParts.add(0);
+      }
+      while (currentParts.length < 3) {
+        currentParts.add(0);
+      }
+      
+
+      for (int i = 0; i < 3; i++) {
+        if (latestParts[i] > currentParts[i]) {
+          print('Update available: $latest > $current');
+          return true;
+        }
+        if (latestParts[i] < currentParts[i]) {
+          return false;
+        }
+      }
+      
+      return false; // Versions are equal
+    } catch (e) {
+      print('Error comparing versions: $e');
+      return false;
     }
-    while (currentParts.length < 3) {
-      currentParts.add(0);
-    }
-    
-    for (int i = 0; i < 3; i++) {
-      if (latestParts[i] > currentParts[i]) return true;
-      if (latestParts[i] < currentParts[i]) return false;
-    }
-    return false;
   }
 
   static Future<String> downloadUpdate(String downloadUrl, String savePath) async {
@@ -113,16 +163,37 @@ class UpdateService {
     }
   }
 
-  static Future<bool> installUpdate(String installerPath) async {
+  static Future<bool> installUpdate(String installerPath, String targetVersion) async {
     try {
+
+      await setInstalledVersion(targetVersion);
+      await setUpdateInProgress(true);
+      
       if (Platform.isWindows) {
 
-        await Process.run(installerPath, ['/SILENT']);
-        return true;
+
+        final result = await Process.run(installerPath, ['/SILENT']);
+        
+
+        await Future.delayed(const Duration(seconds: 2));
+        
+
+        if (result.exitCode == 0 || result.exitCode == null) {
+          return true;
+        } else {
+
+          await clearInstalledVersion();
+          await setUpdateInProgress(false);
+          print('Installer failed with exit code: ${result.exitCode}');
+          return false;
+        }
       }
       return false;
     } catch (e) {
       print('Error installing update: $e');
+
+      await clearInstalledVersion();
+      await setUpdateInProgress(false);
       return false;
     }
   }
@@ -148,14 +219,63 @@ class UpdateService {
     return prefs.getString(_dismissedVersionKey);
   }
 
+  static Future<void> setInstalledVersion(String version) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_installedVersionKey, version);
+  }
+
+  static Future<String?> getInstalledVersion() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_installedVersionKey);
+  }
+
+  static Future<void> clearInstalledVersion() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_installedVersionKey);
+  }
+
+  static Future<void> setUpdateInProgress(bool inProgress) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_updateInProgressKey, inProgress);
+  }
+
+  static Future<bool> isUpdateInProgress() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_updateInProgressKey) ?? false;
+  }
+
   static Future<bool> shouldCheckForUpdates() async {
     final lastCheck = await getLastCheckTime();
     if (lastCheck == null) return true;
     
 
+    final isUpdating = await isUpdateInProgress();
+    if (isUpdating) {
+      return true; // Always check when in update mode
+    }
+    
     final now = DateTime.now();
     final difference = now.difference(lastCheck);
     return difference.inHours >= 24;
+  }
+
+  static Future<void> verifyUpdateCompletion() async {
+    final installedVersion = await getInstalledVersion();
+    if (installedVersion != null) {
+      try {
+        final packageInfo = await PackageInfo.fromPlatform();
+        final currentVersion = 'v${packageInfo.version}';
+        
+        if (installedVersion == currentVersion) {
+
+          await clearInstalledVersion();
+          await setUpdateInProgress(false);
+          print('✓ Update verification successful: now running $currentVersion');
+        }
+      } catch (e) {
+        print('Error verifying update completion: $e');
+      }
+    }
   }
 
   static String getInstallerDownloadPath() {

@@ -1,285 +1,207 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:path/path.dart' as path;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path/path.dart' as p;
 
-class GitHubRelease {
-  final String tagName;
-  final String name;
-  final String body;
-  final String downloadUrl;
-  final DateTime publishedAt;
 
-  GitHubRelease({
-    required this.tagName,
-    required this.name,
-    required this.body,
-    required this.downloadUrl,
-    required this.publishedAt,
-  });
-
-  factory GitHubRelease.fromJson(Map<String, dynamic> json) {
-    return GitHubRelease(
-      tagName: json['tag_name'] ?? '',
-      name: json['name'] ?? '',
-      body: json['body'] ?? '',
-      downloadUrl: _getInstallerUrl(json['assets'] ?? []),
-      publishedAt: DateTime.parse(json['published_at']),
-    );
-  }
-
-  static String _getInstallerUrl(List<dynamic> assets) {
-    for (var asset in assets) {
-      if (asset['name'] == 'SpawnPKMarketDashboardSetup.exe') {
-        return asset['browser_download_url'] ?? '';
-      }
-    }
-    return '';
-  }
-}
 
 class UpdateService {
   static const String _repoOwner = 'i-iz-adam';
   static const String _repoName = 'spawnpk_market_dashboard';
-  static const String _lastCheckKey = 'last_update_check';
-  static const String _dismissedVersionKey = 'dismissed_update_version';
-  static const String _installedVersionKey = 'installed_update_version';
-  static const String _updateInProgressKey = 'update_in_progress';
+  
 
-  static Future<GitHubRelease?> checkForUpdates() async {
+  static bool get isSquirrelInstall {
+    if (!Platform.isWindows) return false;
+    
     try {
+      final exePath = Platform.resolvedExecutable;
+      final exeDir = p.dirname(exePath);
+      
+
+      final updateExe = File(p.join(exeDir, '..', 'Update.exe'));
+      return updateExe.existsSync();
+    } catch (e) {
+      return false;
+    }
+  }
+  
+
+  static String? get updateExePath {
+    if (!isSquirrelInstall) return null;
+    
+    try {
+      final exePath = Platform.resolvedExecutable;
+      final exeDir = p.dirname(exePath);
+      final updateExe = p.normalize(p.join(exeDir, '..', 'Update.exe'));
+      
+      if (File(updateExe).existsSync()) {
+        return updateExe;
+      }
+    } catch (e) {
+      print('Error finding Update.exe: $e');
+    }
+    return null;
+  }
+  
+
+  static Future<UpdateInfo?> checkForUpdates() async {
+    try {
+
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = _normalizeVersion(packageInfo.version);
+      
+
       final response = await http.get(
         Uri.parse('https://api.github.com/repos/$_repoOwner/$_repoName/releases/latest'),
         headers: {
           'Accept': 'application/vnd.github.v3+json',
           'User-Agent': 'SpawnPK-Market-Dashboard',
         },
-      );
-
-      if (response.statusCode == 200) {
-        final release = GitHubRelease.fromJson(json.decode(response.body));
-        
-
-        final installedVersion = await getInstalledVersion();
-        if (installedVersion != null && installedVersion == release.tagName) {
-
-          await clearInstalledVersion();
-          return null;
-        }
-
-        final packageInfo = await PackageInfo.fromPlatform();
-        final currentVersion = 'v${packageInfo.version}';
-        
-
-        final isUpdating = await isUpdateInProgress();
-        if (isUpdating) {
-
-          final attemptedVersion = await getInstalledVersion();
-          if (attemptedVersion != null && attemptedVersion == release.tagName) {
-            return null; // Don't show the same version we just tried to install
-          }
-        }
-        
-        if (_isNewerVersion(release.tagName, currentVersion)) {
-          return release;
-        }
+      ).timeout(const Duration(seconds: 10));
+      
+      if (response.statusCode != 200) {
+        print('Failed to check for updates: ${response.statusCode}');
+        return null;
       }
+      
+      final release = json.decode(response.body) as Map<String, dynamic>;
+      final latestVersion = _normalizeVersion(release['tag_name']);
+      
+      if (_isNewerVersion(latestVersion, currentVersion)) {
+        print('Update available: $latestVersion > $currentVersion');
+        
+        return UpdateInfo(
+          version: release['tag_name'],
+          releaseNotes: release['body'] ?? '',
+          publishedAt: DateTime.parse(release['published_at']),
+        );
+      }
+      
+      print('Already on latest version: $currentVersion');
+      return null;
     } catch (e) {
       print('Error checking for updates: $e');
+      return null;
     }
-    return null;
   }
+  
+
+  static Future<bool> downloadAndInstallUpdate() async {
+    if (!isSquirrelInstall) {
+      print('Not a Squirrel install - cannot update');
+      return false;
+    }
+    
+    final updateExe = updateExePath;
+    if (updateExe == null) {
+      print('Update.exe not found');
+      return false;
+    }
+    
+    try {
+      print('Starting Squirrel update process...');
+      
+
+
+      final releasesUrl = 'https://github.com/$_repoOwner/$_repoName/releases/latest/download';
+      
+      print('Checking for updates at: $releasesUrl');
+      
+
+
+      final result = await Process.run(
+        updateExe,
+        ['--update', releasesUrl],
+      );
+      
+      print('Update.exe exit code: ${result.exitCode}');
+      if (result.stdout.toString().isNotEmpty) {
+        print('stdout: ${result.stdout}');
+      }
+      if (result.stderr.toString().isNotEmpty) {
+        print('stderr: ${result.stderr}');
+      }
+      
+      if (result.exitCode == 0) {
+        print('✓ Update downloaded successfully');
+        
+
+
+        return true;
+      } else {
+        print('✗ Update failed with exit code: ${result.exitCode}');
+        return false;
+      }
+    } catch (e) {
+      print('Error during update: $e');
+      return false;
+    }
+  }
+  
+
+  static Future<void> restartApplication() async {
+    if (!Platform.isWindows) return;
+    
+    try {
+      final exePath = Platform.resolvedExecutable;
+      
+
+      await Process.start(
+        exePath,
+        [],
+        mode: ProcessStartMode.detached,
+      );
+      
+
+      await Future.delayed(const Duration(milliseconds: 500));
+      
+
+      exit(0);
+    } catch (e) {
+      print('Error restarting application: $e');
+    }
+  }
+  
+
+  static String _normalizeVersion(String version) {
+    return version.trim().toLowerCase().replaceFirst(RegExp(r'^v'), '');
+  }
+  
 
   static bool _isNewerVersion(String latest, String current) {
     try {
-      final latestClean = latest.startsWith('v') ? latest.substring(1) : latest;
-      final currentClean = current.startsWith('v') ? current.substring(1) : current;
+      final latestParts = latest.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+      final currentParts = current.split('.').map((e) => int.tryParse(e) ?? 0).toList();
       
 
-      if (latestClean.isEmpty || currentClean.isEmpty) {
-        print('Warning: Empty version string detected - latest: "$latestClean", current: "$currentClean"');
-        return false;
-      }
-      
-      final latestParts = latestClean.split('.').map((part) {
-        try {
-          return int.parse(part);
-        } catch (e) {
-          print('Warning: Invalid version part "$part" in version "$latestClean"');
-          return 0;
-        }
-      }).toList();
-      
-      final currentParts = currentClean.split('.').map((part) {
-        try {
-          return int.parse(part);
-        } catch (e) {
-          print('Warning: Invalid version part "$part" in version "$currentClean"');
-          return 0;
-        }
-      }).toList();
-      
-
-      while (latestParts.length < 3) {
-        latestParts.add(0);
-      }
-      while (currentParts.length < 3) {
-        currentParts.add(0);
-      }
+      while (latestParts.length < 3) latestParts.add(0);
+      while (currentParts.length < 3) currentParts.add(0);
       
 
       for (int i = 0; i < 3; i++) {
-        if (latestParts[i] > currentParts[i]) {
-          print('Update available: $latest > $current');
-          return true;
-        }
-        if (latestParts[i] < currentParts[i]) {
-          return false;
-        }
+        if (latestParts[i] > currentParts[i]) return true;
+        if (latestParts[i] < currentParts[i]) return false;
       }
       
-      return false; // Versions are equal
+      return false; // Equal
     } catch (e) {
       print('Error comparing versions: $e');
       return false;
     }
   }
-
-  static Future<String> downloadUpdate(String downloadUrl, String savePath) async {
-    try {
-      final response = await http.get(Uri.parse(downloadUrl));
-      
-      if (response.statusCode == 200) {
-        final file = File(savePath);
-        await file.writeAsBytes(response.bodyBytes);
-        return savePath;
-      } else {
-        throw Exception('Failed to download: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Download failed: $e');
-    }
-  }
-
-  static Future<bool> installUpdate(String installerPath, String targetVersion) async {
-    try {
-
-      await setInstalledVersion(targetVersion);
-      await setUpdateInProgress(true);
-      
-      if (Platform.isWindows) {
+}
 
 
-        final result = await Process.run(installerPath, ['/SILENT']);
-        
-
-        await Future.delayed(const Duration(seconds: 2));
-        
-
-        if (result.exitCode == 0 || result.exitCode == null) {
-          return true;
-        } else {
-
-          await clearInstalledVersion();
-          await setUpdateInProgress(false);
-          print('Installer failed with exit code: ${result.exitCode}');
-          return false;
-        }
-      }
-      return false;
-    } catch (e) {
-      print('Error installing update: $e');
-
-      await clearInstalledVersion();
-      await setUpdateInProgress(false);
-      return false;
-    }
-  }
-
-  static Future<void> saveLastCheckTime() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_lastCheckKey, DateTime.now().toIso8601String());
-  }
-
-  static Future<DateTime?> getLastCheckTime() async {
-    final prefs = await SharedPreferences.getInstance();
-    final timeString = prefs.getString(_lastCheckKey);
-    return timeString != null ? DateTime.parse(timeString) : null;
-  }
-
-  static Future<void> dismissVersion(String version) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_dismissedVersionKey, version);
-  }
-
-  static Future<String?> getDismissedVersion() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_dismissedVersionKey);
-  }
-
-  static Future<void> setInstalledVersion(String version) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_installedVersionKey, version);
-  }
-
-  static Future<String?> getInstalledVersion() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_installedVersionKey);
-  }
-
-  static Future<void> clearInstalledVersion() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_installedVersionKey);
-  }
-
-  static Future<void> setUpdateInProgress(bool inProgress) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_updateInProgressKey, inProgress);
-  }
-
-  static Future<bool> isUpdateInProgress() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_updateInProgressKey) ?? false;
-  }
-
-  static Future<bool> shouldCheckForUpdates() async {
-    final lastCheck = await getLastCheckTime();
-    if (lastCheck == null) return true;
-    
-
-    final isUpdating = await isUpdateInProgress();
-    if (isUpdating) {
-      return true; // Always check when in update mode
-    }
-    
-    final now = DateTime.now();
-    final difference = now.difference(lastCheck);
-    return difference.inHours >= 24;
-  }
-
-  static Future<void> verifyUpdateCompletion() async {
-    final installedVersion = await getInstalledVersion();
-    if (installedVersion != null) {
-      try {
-        final packageInfo = await PackageInfo.fromPlatform();
-        final currentVersion = 'v${packageInfo.version}';
-        
-        if (installedVersion == currentVersion) {
-
-          await clearInstalledVersion();
-          await setUpdateInProgress(false);
-          print('✓ Update verification successful: now running $currentVersion');
-        }
-      } catch (e) {
-        print('Error verifying update completion: $e');
-      }
-    }
-  }
-
-  static String getInstallerDownloadPath() {
-    final tempDir = Directory.systemTemp;
-    return path.join(tempDir.path, 'SpawnPKMarketDashboardSetup.exe');
-  }
+class UpdateInfo {
+  final String version;
+  final String releaseNotes;
+  final DateTime publishedAt;
+  
+  UpdateInfo({
+    required this.version,
+    required this.releaseNotes,
+    required this.publishedAt,
+  });
 }

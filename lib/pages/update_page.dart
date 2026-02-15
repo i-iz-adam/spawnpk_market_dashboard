@@ -16,161 +16,214 @@ class UpdatePage extends ConsumerStatefulWidget {
 
 class _UpdatePageState extends ConsumerState<UpdatePage> {
   bool _isChecking = false;
-  bool _isDownloading = false;
-  bool _isInstalling = false;
-  double _downloadProgress = 0.0;
-  GitHubRelease? _latestRelease;
+  bool _isUpdating = false;
+  UpdateInfo? _updateInfo;
   String? _currentVersion;
   String? _errorMessage;
-  String? _dismissedVersion;
+  bool _isSquirrelInstall = false;
 
   @override
   void initState() {
     super.initState();
-    _initializeUpdateState();
-    _loadCurrentVersion();
-    _loadDismissedVersion();
-    _checkForUpdates();
+    _initialize();
   }
 
-  Future<void> _initializeUpdateState() async {
-
-    await UpdateService.verifyUpdateCompletion();
-    
-
-    final isUpdating = await UpdateService.isUpdateInProgress();
-    if (isUpdating) {
-
-      await UpdateService.setUpdateInProgress(false);
-      print('⚠ Update process cleared - likely failed or interrupted');
-    }
+  Future<void> _initialize() async {
+    _isSquirrelInstall = UpdateService.isSquirrelInstall;
+    await _loadCurrentVersion();
+    await _checkForUpdates();
   }
 
   Future<void> _loadCurrentVersion() async {
     final packageInfo = await PackageInfo.fromPlatform();
-    setState(() {
-      _currentVersion = packageInfo.version;
-    });
-  }
-
-  Future<void> _loadDismissedVersion() async {
-    final dismissed = await UpdateService.getDismissedVersion();
-    setState(() {
-      _dismissedVersion = dismissed;
-    });
+    if (mounted) {
+      setState(() {
+        _currentVersion = packageInfo.version;
+      });
+    }
   }
 
   Future<void> _checkForUpdates() async {
+    if (!mounted) return;
+    
     setState(() {
       _isChecking = true;
       _errorMessage = null;
     });
 
     try {
-      final release = await UpdateService.checkForUpdates();
-      setState(() {
-        _latestRelease = release;
-        _isChecking = false;
-      });
-
-      if (release != null) {
-        await UpdateService.saveLastCheckTime();
+      final updateInfo = await UpdateService.checkForUpdates();
+      
+      if (mounted) {
+        setState(() {
+          _updateInfo = updateInfo;
+          _isChecking = false;
+        });
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = e.toString();
-        _isChecking = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to check for updates: ${e.toString()}';
+          _isChecking = false;
+        });
+      }
     }
   }
 
   Future<void> _downloadAndInstall() async {
-    if (_latestRelease == null) return;
+    if (_updateInfo == null || !mounted) return;
+    
+    if (!_isSquirrelInstall) {
+      _showManualUpdateDialog();
+      return;
+    }
 
     setState(() {
-      _isDownloading = true;
-      _downloadProgress = 0.0;
+      _isUpdating = true;
       _errorMessage = null;
     });
 
     try {
-      final downloadPath = UpdateService.getInstallerDownloadPath();
+      final success = await UpdateService.downloadAndInstallUpdate();
       
-
-      for (int i = 0; i <= 100; i += 10) {
-        await Future.delayed(Duration(milliseconds: 200));
-        if (mounted) {
-          setState(() {
-            _downloadProgress = i / 100.0;
-          });
-        }
-      }
-
-      final downloadedPath = await UpdateService.downloadUpdate(
-        _latestRelease!.downloadUrl,
-        downloadPath,
-      );
-
-      setState(() {
-        _isDownloading = false;
-        _isInstalling = true;
-      });
-
-      final success = await UpdateService.installUpdate(downloadedPath, _latestRelease!.tagName);
+      if (!mounted) return;
       
       if (success) {
-        _showInstallSuccessDialog();
+        setState(() {
+          _isUpdating = false;
+        });
+        _showRestartDialog();
       } else {
         setState(() {
-          _errorMessage = 'Failed to start installation';
-          _isInstalling = false;
+          _errorMessage = 'Update failed. Please try again or download manually.';
+          _isUpdating = false;
         });
       }
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Download failed: ${e.toString()}';
-        _isDownloading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Update error: ${e.toString()}';
+          _isUpdating = false;
+        });
+      }
     }
   }
 
-  void _showInstallSuccessDialog() {
+  void _showRestartDialog() {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
-        title: const Text('Update Started'),
-        content: const Text(
-          'The update installer has started. The application will now close '
-          'to complete the installation. Please restart the application after '
-          'the installation finishes.',
+        title: Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green, size: 28),
+            const SizedBox(width: 12),
+            const Text('Update Ready'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'The update has been downloaded successfully.',
+              style: TextStyle(fontWeight: FontWeight.w500),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Restart the application to apply the update and use the new version.',
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green.shade200),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.green.shade700, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Version ${_updateInfo!.version} will be active after restart.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.green.shade700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
-            onPressed: () async {
+            onPressed: () {
               Navigator.of(context).pop();
-              
-
-              await UpdateService.setUpdateInProgress(false);
-              
-              if (Platform.isWindows) {
-                exit(0);
-              }
+              UpdateService.restartApplication();
             },
-            child: const Text('OK'),
+            style: TextButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            ),
+            child: const Text('Restart Now'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+            },
+            child: const Text('Later'),
           ),
         ],
       ),
     );
   }
 
-  Future<void> _dismissUpdate() async {
-    if (_latestRelease != null) {
-      await UpdateService.dismissVersion(_latestRelease!.tagName);
-      setState(() {
-        _dismissedVersion = _latestRelease!.tagName;
-      });
-    }
+  void _showManualUpdateDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Manual Update Required'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Version ${_updateInfo!.version} is available.'),
+            const SizedBox(height: 16),
+            const Text(
+              'Automatic updates are only available for Squirrel-installed versions. '
+              'Please download the latest version from GitHub.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+
+              Process.run('cmd', [
+                '/c',
+                'start',
+                'https://github.com/i-iz-adam/spawnpk_market_dashboard/releases/latest'
+              ]);
+            },
+            style: TextButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Open Releases'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -191,13 +244,40 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
               Text(
                 'Application Updates',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
+                      fontWeight: FontWeight.w600,
+                    ),
               ),
+              const Spacer(),
+              if (_isSquirrelInstall && Platform.isWindows)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.auto_awesome, size: 16, color: Colors.blue.shade700),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Auto-Update Enabled',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
           const SizedBox(height: AppSpacing.xl),
-          
           Expanded(
             child: SingleChildScrollView(
               child: Column(
@@ -235,8 +315,8 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
               Text(
                 'Current Version',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: AppColors.onSurfaceVariant,
-                ),
+                      color: AppColors.onSurfaceVariant,
+                    ),
               ),
             ],
           ),
@@ -244,8 +324,8 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
           Text(
             _currentVersion != null ? 'v$_currentVersion' : 'Loading...',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+                  fontWeight: FontWeight.w600,
+                ),
           ),
         ],
       ),
@@ -257,12 +337,8 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
       return _buildCheckingCard();
     }
 
-    if (_latestRelease == null) {
+    if (_updateInfo == null) {
       return _buildUpToDateCard();
-    }
-
-    if (_dismissedVersion == _latestRelease!.tagName) {
-      return _buildDismissedUpdateCard();
     }
 
     return _buildUpdateAvailableCard();
@@ -299,9 +375,9 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
               Text(
                 'You\'re up to date!',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.green,
-                  fontWeight: FontWeight.w600,
-                ),
+                      color: Colors.green,
+                      fontWeight: FontWeight.w600,
+                    ),
               ),
             ],
           ),
@@ -309,68 +385,14 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
           Text(
             'You have the latest version of SpawnPK Market Dashboard.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppColors.onSurfaceVariant,
-            ),
+                  color: AppColors.onSurfaceVariant,
+                ),
           ),
           const SizedBox(height: AppSpacing.lg),
           ElevatedButton.icon(
-            onPressed: _checkForUpdates,
+            onPressed: _isChecking ? null : _checkForUpdates,
             icon: const Icon(Icons.refresh),
             label: const Text('Check Again'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDismissedUpdateCard() {
-    return AppCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.notifications_off,
-                color: AppColors.onSurfaceVariant,
-                size: 24,
-              ),
-              const SizedBox(width: AppSpacing.sm),
-              Text(
-                'Update Dismissed',
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: AppColors.onSurfaceVariant,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.md),
-          Text(
-            'Version ${_latestRelease!.tagName} is available but was dismissed.',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: AppColors.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Row(
-            children: [
-              ElevatedButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _dismissedVersion = null;
-                  });
-                },
-                icon: const Icon(Icons.notifications_active),
-                label: const Text('Show Update'),
-              ),
-              const SizedBox(width: AppSpacing.md),
-              OutlinedButton.icon(
-                onPressed: _checkForUpdates,
-                icon: const Icon(Icons.refresh),
-                label: const Text('Check Again'),
-              ),
-            ],
           ),
         ],
       ),
@@ -392,22 +414,22 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
               const SizedBox(width: AppSpacing.sm),
               Expanded(
                 child: Text(
-                  'Update Available: ${_latestRelease!.tagName}',
+                  'Update Available: ${_updateInfo!.version}',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: AppColors.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
+                        color: AppColors.primary,
+                        fontWeight: FontWeight.w600,
+                      ),
                 ),
               ),
             ],
           ),
           const SizedBox(height: AppSpacing.md),
-          if (_latestRelease!.body.isNotEmpty) ...[
+          if (_updateInfo!.releaseNotes.isNotEmpty) ...[
             Text(
               'Release Notes:',
               style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                color: AppColors.onSurfaceVariant,
-              ),
+                    color: AppColors.onSurfaceVariant,
+                  ),
             ),
             const SizedBox(height: AppSpacing.sm),
             Container(
@@ -418,51 +440,32 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
                 borderRadius: BorderRadius.circular(AppRadius.md),
               ),
               child: Text(
-                _latestRelease!.body,
+                _updateInfo!.releaseNotes,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: AppColors.onSurfaceVariant,
-                ),
+                      color: AppColors.onSurfaceVariant,
+                    ),
               ),
             ),
             const SizedBox(height: AppSpacing.lg),
           ],
-          if (_isDownloading) ...[
-            LinearProgressIndicator(value: _downloadProgress),
+          if (_isUpdating) ...[
+            const LinearProgressIndicator(),
             const SizedBox(height: AppSpacing.sm),
             Text(
-              'Downloading update... ${(_downloadProgress * 100).toInt()}%',
+              'Downloading and installing update...',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: AppSpacing.lg),
           ],
-          if (_isInstalling) ...[
-            const CircularProgressIndicator(),
-            const SizedBox(height: AppSpacing.md),
-            Text(
-              'Starting installer...',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: AppSpacing.lg),
-          ],
-          if (!_isDownloading && !_isInstalling) ...[
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _downloadAndInstall,
-                  icon: const Icon(Icons.download),
-                  label: const Text('Download & Install'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    foregroundColor: AppColors.onSurface,
-                  ),
-                ),
-                const SizedBox(width: AppSpacing.md),
-                OutlinedButton.icon(
-                  onPressed: _dismissUpdate,
-                  icon: const Icon(Icons.close),
-                  label: const Text('Dismiss'),
-                ),
-              ],
+          if (!_isUpdating) ...[
+            ElevatedButton.icon(
+              onPressed: _downloadAndInstall,
+              icon: const Icon(Icons.download),
+              label: Text(_isSquirrelInstall ? 'Download & Install' : 'View Update'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: AppColors.onSurface,
+              ),
             ),
           ],
         ],
@@ -486,9 +489,9 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
               Text(
                 'Error',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Colors.red,
-                  fontWeight: FontWeight.w600,
-                ),
+                      color: Colors.red,
+                      fontWeight: FontWeight.w600,
+                    ),
               ),
             ],
           ),
@@ -496,8 +499,8 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
           Text(
             _errorMessage!,
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.red,
-            ),
+                  color: Colors.red,
+                ),
           ),
           const SizedBox(height: AppSpacing.lg),
           OutlinedButton.icon(

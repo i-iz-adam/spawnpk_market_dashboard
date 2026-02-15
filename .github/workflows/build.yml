@@ -1,4 +1,4 @@
-name: Build and Release
+name: Build and Release (Squirrel)
 
 on:
   push:
@@ -8,7 +8,6 @@ on:
     paths-ignore:
       - '**.md'
       - '.gitignore'
-      - '.git/**'
     tags:
       - 'v*'
 
@@ -18,33 +17,45 @@ jobs:
     outputs:
       should-release: ${{ steps.version-check.outputs.should-release }}
       version-tag: ${{ steps.version-check.outputs.version-tag }}
+      version-number: ${{ steps.version-check.outputs.version-number }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
-      - name: Check for version in commit message
+      - name: Check for version in commit message or tag
         id: version-check
         run: |
-          COMMIT_MSG=$(git log -1 --pretty=format:"%s")
-          echo "Commit message: $COMMIT_MSG"
-
-          if echo "$COMMIT_MSG" | grep -E 'v[0-9]+\.[0-9]+\.[0-9]+'; then
-            VERSION=$(echo "$COMMIT_MSG" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            # Tag push
+            VERSION_TAG="${GITHUB_REF#refs/tags/}"
+            VERSION_NUMBER="${VERSION_TAG#v}"
             echo "should-release=true" >> $GITHUB_OUTPUT
-            echo "version-tag=$VERSION" >> $GITHUB_OUTPUT
-            echo "Found version: $VERSION"
+            echo "version-tag=$VERSION_TAG" >> $GITHUB_OUTPUT
+            echo "version-number=$VERSION_NUMBER" >> $GITHUB_OUTPUT
+            echo "Found tag: $VERSION_TAG"
           else
-            echo "should-release=false" >> $GITHUB_OUTPUT
-            echo "No version found in commit message"
+            # Commit message check
+            COMMIT_MSG=$(git log -1 --pretty=format:"%s")
+            echo "Commit message: $COMMIT_MSG"
+            
+            if echo "$COMMIT_MSG" | grep -E 'v[0-9]+\.[0-9]+\.[0-9]+'; then
+              VERSION_TAG=$(echo "$COMMIT_MSG" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+              VERSION_NUMBER="${VERSION_TAG#v}"
+              echo "should-release=true" >> $GITHUB_OUTPUT
+              echo "version-tag=$VERSION_TAG" >> $GITHUB_OUTPUT
+              echo "version-number=$VERSION_NUMBER" >> $GITHUB_OUTPUT
+              echo "Found version: $VERSION_TAG"
+            else
+              echo "should-release=false" >> $GITHUB_OUTPUT
+              echo "No version found in commit message"
+            fi
           fi
 
   build:
     needs: check-version
     runs-on: windows-latest
-    if: needs.check-version.outputs.should-release == 'true' || startsWith(github.ref, 'refs/tags/')
-    outputs:
-      version: ${{ steps.version.outputs.version }}
+    if: needs.check-version.outputs.should-release == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -53,43 +64,50 @@ jobs:
         with:
           channel: stable
 
-      - name: Build Windows executable
-        run: |
-          flutter config --enable-windows-desktop
-          flutter build windows --release
+      - name: Get dependencies
+        run: flutter pub get
 
-      - name: Create installer with Inno Setup
-        uses: Minionguyjpro/Inno-Setup-Action@v1.2.5
-        with:
-          path: installer/installer.iss
-          options: /O"output"
-
-      - name: Extract version from tag or commit
-        id: version
-        run: |
-          if ("${{ github.ref }}".StartsWith("refs/tags/")) {
-            $version = "${{ github.ref_name }}"
-          } else {
-            $version = "${{ needs.check-version.outputs.version-tag }}"
-          }
-          if ([string]::IsNullOrEmpty($version)) {
-            Write-Error "Version could not be extracted. Aborting."
-            exit 1
-          }
-          "version=$version" >> $env:GITHUB_OUTPUT
-          echo "Extracted version: $version"
+      - name: Update pubspec.yaml version
         shell: pwsh
+        run: |
+          $version = "${{ needs.check-version.outputs.version-number }}"
+          $pubspecPath = "pubspec.yaml"
+          $content = Get-Content $pubspecPath -Raw
+          $content = $content -replace 'version: \d+\.\d+\.\d+\+\d+', "version: $version+1"
+          $content | Set-Content $pubspecPath -NoNewline
+          Write-Host "Updated pubspec.yaml to version: $version+1"
 
-      - name: Upload installer as artifact
+      - name: Build Flutter Windows app
+        run: flutter build windows --release
+
+      - name: Build Squirrel installer
+        shell: pwsh
+        run: |
+          Write-Host "Building Squirrel installer..." -ForegroundColor Green
+          
+          # Run the squirrel installer builder
+          dart run squirrel:installer_windows
+          
+          Write-Host "Squirrel build complete!" -ForegroundColor Green
+          
+          # List the output files
+          $releaseDir = "build\squirrel_release"
+          if (Test-Path $releaseDir) {
+            Write-Host "`nRelease files:" -ForegroundColor Cyan
+            Get-ChildItem $releaseDir -Recurse -File | ForEach-Object {
+              Write-Host "  $($_.FullName)" -ForegroundColor Gray
+            }
+          }
+
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: installer
-          path: output/SpawnPKMarketDashboardSetup.exe
+          name: squirrel-release
+          path: build/squirrel_release/**/*
 
   release:
-    needs: build
+    needs: [check-version, build]
     runs-on: ubuntu-latest
-    if: needs.build.outputs.version != ''
     permissions:
       contents: write
     steps:
@@ -97,34 +115,65 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Create and push tag
+      - name: Create and push tag (if not already tagged)
+        if: "!startsWith(github.ref, 'refs/tags/')"
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ needs.build.outputs.version }}" -m "Release ${{ needs.build.outputs.version }}"
-          git push origin "${{ needs.build.outputs.version }}"
+          git tag -a "${{ needs.check-version.outputs.version-tag }}" -m "Release ${{ needs.check-version.outputs.version-tag }}"
+          git push origin "${{ needs.check-version.outputs.version-tag }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download installer artifact
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          name: installer
-          path: output/
+          name: squirrel-release
+          path: release-files/
 
-      - name: Create Release and Upload Asset
+      - name: List release files
+        run: |
+          echo "Release files:"
+          find release-files -type f -exec ls -lh {} \;
+
+      - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.build.outputs.version }}
-          name: SpawnPK Market Dashboard ${{ needs.build.outputs.version }}
+          tag_name: ${{ needs.check-version.outputs.version-tag }}
+          name: SpawnPK Market Dashboard ${{ needs.check-version.outputs.version-tag }}
           body: |
-            ## Changes in ${{ needs.build.outputs.version }}
+            ## SpawnPK Market Dashboard ${{ needs.check-version.outputs.version-tag }}
 
-            This release was automatically created from commit: ${{ github.sha }}
+            ### 📥 Installation
 
-            ### Installation
-            Download `SpawnPKMarketDashboardSetup.exe` below and run it to install or update the application.
-          files: output/SpawnPKMarketDashboardSetup.exe
+            **First-time users:**
+            - Download `Setup.exe` and run it
+            - No administrator privileges required
+            - Automatic updates enabled
+
+            **Existing users:**
+            - Your app will automatically detect and download this update
+            - Or download `Setup.exe` for a fresh installation
+
+            ### 🔄 Automatic Updates
+
+            This release uses Squirrel.Windows for seamless updates:
+            - The app checks for updates periodically
+            - Updates download in the background
+            - One-click install and restart
+
+            ### 📝 Changes
+
+            Released from commit: ${{ github.sha }}
+
+            ---
+
+            **Technical files** (required for auto-update):
+            - `RELEASES` - Update manifest file
+            - `*.nupkg` - Package files (full and delta)
+
+            All files must remain in this release for automatic updates to work.
+          files: release-files/**/*
           draft: false
           prerelease: false
         env:

@@ -228,73 +228,76 @@ class _UpdatePageState extends ConsumerState<UpdatePage> {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.xl),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(
-                Icons.system_update,
-                size: 28,
-                color: AppColors.primary,
-              ),
-              const SizedBox(width: AppSpacing.md),
-              Text(
-                'Application Updates',
-                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-              const Spacer(),
-              if (_isSquirrelInstall && Platform.isWindows)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.blue.shade200),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.auto_awesome, size: 16, color: Colors.blue.shade700),
-                      const SizedBox(width: 6),
-                      Text(
-                        'Auto-Update Enabled',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.blue.shade700,
-                        ),
-                      ),
-                    ],
-                  ),
+    return Container(
+      color: Colors.transparent,
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.system_update,
+                  size: 28,
+                  color: AppColors.primary,
                 ),
-            ],
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildCurrentVersionCard(),
-                  const SizedBox(height: AppSpacing.lg),
-                  _buildUpdateStatusCard(),
-                  if (_errorMessage != null) ...[
+                const SizedBox(width: AppSpacing.md),
+                Text(
+                  'Application Updates',
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+                const Spacer(),
+                if (_isSquirrelInstall && Platform.isWindows)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.auto_awesome, size: 16, color: Colors.blue.shade700),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Auto-Update Enabled',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.blue.shade700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.xl),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildCurrentVersionCard(),
                     const SizedBox(height: AppSpacing.lg),
-                    _buildErrorCard(),
+                    _buildUpdateStatusCard(),
+                    if (_errorMessage != null) ...[
+                      const SizedBox(height: AppSpacing.lg),
+                      _buildErrorCard(),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

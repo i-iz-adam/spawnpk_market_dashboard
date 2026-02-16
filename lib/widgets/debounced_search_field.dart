@@ -35,7 +35,7 @@ class _DebouncedSearchFieldState extends State<DebouncedSearchField> {
   final LayerLink _layerLink = LayerLink();
   OverlayEntry? _overlayEntry;
   bool _showSuggestions = false;
-  bool _isSelectingSuggestion = false; // Add this flag
+  bool _isSelectingSuggestion = false;
 
   @override
   void initState() {
@@ -58,7 +58,6 @@ class _DebouncedSearchFieldState extends State<DebouncedSearchField> {
   void _onTextChanged() {
     if (mounted) setState(() {});
     
-
     if (_isSelectingSuggestion) return;
     
     _debounce?.cancel();
@@ -90,27 +89,25 @@ class _DebouncedSearchFieldState extends State<DebouncedSearchField> {
   }
 
   void _showOverlay() {
-  _removeOverlay();
-  final overlayState = Overlay.of(context);
-  _overlayEntry = OverlayEntry(
-    builder: (context) => Stack(
-      children: [
-
-        Positioned.fill(
-          child: GestureDetector(
-            behavior: HitTestBehavior.translucent, // Changed from opaque
-            onTap: _removeOverlay,
-            child: Container(color: Colors.transparent), // Add transparent container
-          ),
-        ),
-        Positioned(
-          width: _getOverlayWidth(),
-          child: CompositedTransformFollower(
-            link: _layerLink,
-            showWhenUnlinked: false,
-            offset: Offset(0, _getOverlayHeight()),
+    _removeOverlay();
+    final overlayState = Overlay.of(context);
+    
+    _overlayEntry = OverlayEntry(
+      builder: (context) => Stack(
+        children: [
+          Positioned.fill(
             child: GestureDetector(
-              onTap: () {}, // Prevent taps from passing through to barrier
+              behavior: HitTestBehavior.translucent,
+              onTap: _removeOverlay,
+              child: Container(color: Colors.transparent),
+            ),
+          ),
+          Positioned(
+            width: _getOverlayWidth(),
+            child: CompositedTransformFollower(
+              link: _layerLink,
+              showWhenUnlinked: false,
+              offset: Offset(0, _getOverlayHeight()),
               child: Material(
                 elevation: 8,
                 shadowColor: Colors.black38,
@@ -128,7 +125,6 @@ class _DebouncedSearchFieldState extends State<DebouncedSearchField> {
                         dense: true,
                         title: Text(s),
                         onTap: () {
-                          print('Item tapped: $s');
                           _selectSuggestion(s);
                         },
                       );
@@ -138,25 +134,24 @@ class _DebouncedSearchFieldState extends State<DebouncedSearchField> {
               ),
             ),
           ),
-        ),
-      ],
-    ),
-  );
-  overlayState.insert(_overlayEntry!);
-}
+        ],
+      ),
+    );
+    
+    overlayState.insert(_overlayEntry!);
+  }
 
-void _selectSuggestion(String s) {
-  print('_selectSuggestion called with: $s');
-  _isSelectingSuggestion = true;
-  _controller.text = s;
-  _controller.selection = TextSelection.collapsed(offset: s.length);
-  _isSelectingSuggestion = false;
-  
-  _removeOverlay();
-  
-  widget.onSuggestionSelected?.call(s);
-  widget.onChanged(s);
-}
+  void _selectSuggestion(String s) {
+    _isSelectingSuggestion = true;
+    _controller.text = s;
+    _controller.selection = TextSelection.collapsed(offset: s.length);
+    _isSelectingSuggestion = false;
+    
+    _removeOverlay();
+    
+    widget.onSuggestionSelected?.call(s);
+    widget.onChanged(s);
+  }
 
   double _getOverlayWidth() {
     final box = context.findRenderObject() as RenderBox?;
@@ -178,29 +173,32 @@ void _selectSuggestion(String s) {
   Widget build(BuildContext context) {
     return CompositedTransformTarget(
       link: _layerLink,
-      child: TextField(
-        controller: _controller,
-        decoration: InputDecoration(
-          hintText: widget.hintText,
-          prefixIcon: const Icon(Icons.search, size: 22),
-          suffixIcon: _controller.text.isNotEmpty
-              ? IconButton(
-                  icon: const Icon(Icons.clear, size: 20),
-                  onPressed: () {
-                    _controller.clear();
-                    widget.onChanged('');
-                    _removeOverlay();
-                  },
-                )
+      child: Material(
+        type: MaterialType.transparency,
+        child: TextField(
+          controller: _controller,
+          decoration: InputDecoration(
+            hintText: widget.hintText,
+            prefixIcon: const Icon(Icons.search, size: 22),
+            suffixIcon: _controller.text.isNotEmpty
+                ? IconButton(
+                    icon: const Icon(Icons.clear, size: 20),
+                    onPressed: () {
+                      _controller.clear();
+                      widget.onChanged('');
+                      _removeOverlay();
+                    },
+                  )
+                : null,
+          ),
+          onSubmitted: widget.onSubmitted != null
+              ? (v) {
+                  _removeOverlay();
+                  widget.onSubmitted!(v.trim());
+                }
               : null,
+          onTapOutside: (_) => _removeOverlay(),
         ),
-        onSubmitted: widget.onSubmitted != null
-            ? (v) {
-                _removeOverlay();
-                widget.onSubmitted!(v.trim());
-              }
-            : null,
-        onTapOutside: (_) => _removeOverlay(),
       ),
     );
   }

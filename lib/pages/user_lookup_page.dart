@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/models.dart';
+import '../providers/navigation_provider.dart';
 import '../providers/user_providers.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
@@ -157,7 +158,6 @@ class _DetailRow extends StatelessWidget {
   }
 }
 
-
 class UserLookupPage extends ConsumerStatefulWidget {
   const UserLookupPage({super.key});
 
@@ -174,6 +174,15 @@ class _UserLookupPageState extends ConsumerState<UserLookupPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
+    
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final pendingUser = ref.read(pendingSelectedUserProvider);
+      if (pendingUser != null) {
+        ref.read(selectedUserProvider.notifier).state = pendingUser;
+        ref.read(pendingSelectedUserProvider.notifier).state = null;
+      }
+    });
   }
 
   @override
@@ -186,6 +195,7 @@ class _UserLookupPageState extends ConsumerState<UserLookupPage>
   @override
   Widget build(BuildContext context) {
     final selectedUser = ref.watch(selectedUserProvider);
+    
     ref.listen(selectedUserProvider, (prev, next) {
       if (prev != next) {
         ref.read(userTradesSearchQueryProvider.notifier).state = '';
@@ -194,68 +204,74 @@ class _UserLookupPageState extends ConsumerState<UserLookupPage>
       }
     });
 
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.xxl),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SectionHeader(
-            title: 'User Lookup',
-            subtitle: 'View purchases and sales for a username',
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          DebouncedSearchField(
-            controller: _searchController,
-            hintText: 'Search username...',
-            suggestions: const [],
-            onSuggestionSelected: (s) {
-              ref.read(selectedUserProvider.notifier).state = s;
-            },
-            onChanged: (query) {
-              final trimmed = query.trim();
-              if (trimmed.isEmpty) {
-                ref.read(selectedUserProvider.notifier).state = null;
-              } else {
-                ref.read(selectedUserProvider.notifier).state = trimmed;
-              }
-            },
-          ),
-          if (selectedUser != null) ...[
+    return Container(
+      color: Colors.transparent,
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SectionHeader(
+              title: 'User Lookup',
+              subtitle: 'View purchases and sales for a username',
+            ),
             const SizedBox(height: AppSpacing.xl),
-            Expanded(
-              child: _UserTradesContent(
-                username: selectedUser,
-                tabController: _tabController,
+            Material(
+              type: MaterialType.transparency,
+              child: DebouncedSearchField(
+                controller: _searchController,
+                hintText: 'Search username...',
+                suggestions: const [],
+                onSuggestionSelected: (s) {
+                  ref.read(selectedUserProvider.notifier).state = s;
+                },
+                onChanged: (query) {
+                  final trimmed = query.trim();
+                  if (trimmed.isEmpty) {
+                    ref.read(selectedUserProvider.notifier).state = null;
+                  } else {
+                    ref.read(selectedUserProvider.notifier).state = trimmed;
+                  }
+                },
               ),
             ),
-          ] else
-            Expanded(
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(
-                      Icons.person_search,
-                      size: 56,
-                      color: Theme.of(context)
-                          .colorScheme
-                          .onSurfaceVariant
-                          .withValues(alpha: 0.4),
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-                    Text(
-                      'Enter a username to view trades',
-                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                            color:
-                                Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+            if (selectedUser != null) ...[
+              const SizedBox(height: AppSpacing.xl),
+              Expanded(
+                child: _UserTradesContent(
+                  username: selectedUser,
+                  tabController: _tabController,
                 ),
               ),
-            ),
-        ],
+            ] else
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.person_search,
+                        size: 56,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurfaceVariant
+                            .withValues(alpha: 0.4),
+                      ),
+                      const SizedBox(height: AppSpacing.lg),
+                      Text(
+                        'Enter a username to view trades',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              color:
+                                  Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

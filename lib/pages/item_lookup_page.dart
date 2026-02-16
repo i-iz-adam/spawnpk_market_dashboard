@@ -1,9 +1,11 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/models.dart';
 import '../providers/app_providers.dart';
 import '../providers/item_providers.dart';
+import '../providers/navigation_provider.dart';
 import '../theme/app_theme.dart';
 import '../utils/formatters.dart';
 import '../widgets/app_card.dart';
@@ -20,15 +22,26 @@ class ItemLookupPage extends ConsumerStatefulWidget {
 }
 
 class _ItemLookupPageState extends ConsumerState<ItemLookupPage> {
-
-
   TextEditingController? _autocompleteController;
   final FocusNode _focusNode = FocusNode();
 
   @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final pendingItem = ref.read(pendingSelectedItemProvider);
+      if (pendingItem != null) {
+        ref.read(selectedItemProvider.notifier).state = pendingItem;
+        ref.read(pendingSelectedItemProvider.notifier).state = null;
+        ref.read(itemTradesPageProvider.notifier).state = 1;
+      }
+    });
+  }
+
+  @override
   void dispose() {
     _focusNode.dispose();
-
     super.dispose();
   }
 
@@ -38,147 +51,140 @@ class _ItemLookupPageState extends ConsumerState<ItemLookupPage> {
     final selectedItem = ref.watch(selectedItemProvider);
     final page = ref.watch(itemTradesPageProvider);
 
-    return Padding(
-      padding: const EdgeInsets.all(AppSpacing.xxl),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const SectionHeader(
-            title: 'Item Lookup',
-            subtitle: 'Search items and view trade history',
-          ),
-          const SizedBox(height: AppSpacing.xl),
-          itemNamesAsync.when(
-            data: (names) => RawAutocomplete<String>(
-              optionsBuilder: (textEditingValue) {
-                if (textEditingValue.text.isEmpty) {
-                  return const Iterable<String>.empty();
-                }
-
-                return names.where(
-                  (name) => name.toLowerCase().contains(
-                        textEditingValue.text.toLowerCase(),
-                      ),
-                );
-              },
-              onSelected: (selection) {
-                print('onSelected called with: $selection');
-
-                _autocompleteController?.text = selection;
-
-                ref.read(selectedItemProvider.notifier).state = selection;
-                ref.read(itemTradesPageProvider.notifier).state = 1;
-
-                _focusNode.unfocus();
-              },
-              fieldViewBuilder: (
-                BuildContext context,
-                TextEditingController textController,
-                FocusNode focusNode,
-                VoidCallback onFieldSubmitted,
-              ) {
-
-                _autocompleteController = textController;
-
-                return TextField(
-                  controller: textController, // Use the provided controller
-                  focusNode: focusNode,
-                  onSubmitted: (value) {
-
-                    final q = value.trim();
-                    if (q.isEmpty) return;
-                    final match = names.where((n) => n.toLowerCase() == q.toLowerCase()).toList();
-                    if (match.isNotEmpty) {
-                      textController.text = match.first;
-                      ref.read(selectedItemProvider.notifier).state = match.first;
-                      ref.read(itemTradesPageProvider.notifier).state = 1;
-                      focusNode.unfocus();
-                    }
-                  },
-                  onChanged: (query) {
-
-                    if (query.trim().isEmpty) {
-                      ref.read(selectedItemProvider.notifier).state = null;
-                    }
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Search items...',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                    ),
-                  ),
-                );
-              },
-              optionsViewBuilder: (
-                BuildContext context,
-                AutocompleteOnSelected<String> onSelected,
-                Iterable<String> options,
-              ) {
-                return Align(
-                  alignment: Alignment.topLeft,
-                  child: Material(
-                    elevation: 4,
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                    child: SizedBox(
-                      width: 400, // Adjust width as needed
-                      child: ListView.builder(
-                        padding: EdgeInsets.zero,
-                        shrinkWrap: true,
-                        itemCount: options.length,
-                        itemBuilder: (BuildContext context, int index) {
-                          final option = options.elementAt(index);
-                          return ListTile(
-                            title: Text(option),
-                            onTap: () {
-                              onSelected(option);
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                );
-              },
+    return Container(
+      color: Colors.transparent, // Make container transparent
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.xxl),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SectionHeader(
+              title: 'Item Lookup',
+              subtitle: 'Search items and view trade history',
             ),
-            loading: () => TextField(
-              enabled: false,
-              decoration: InputDecoration(
-                hintText: 'Loading items...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(AppRadius.md),
-                ),
-              ),
-            ),
-            error: (e, _) => Text(
-              'Failed to load items: $e',
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
-          ),
-          if (selectedItem != null) ...[
             const SizedBox(height: AppSpacing.xl),
-            Expanded(
-              child: _ItemTradesContent(
-                itemName: selectedItem,
-                page: page,
-                onPageChanged: (p) {
-                  ref.read(itemTradesPageProvider.notifier).state = p;
+            itemNamesAsync.when(
+              data: (names) => RawAutocomplete<String>(
+                optionsBuilder: (textEditingValue) {
+                  if (textEditingValue.text.isEmpty) {
+                    return const Iterable<String>.empty();
+                  }
+                  return names.where(
+                    (name) => name.toLowerCase().contains(
+                          textEditingValue.text.toLowerCase(),
+                        ),
+                  );
+                },
+                onSelected: (selection) {
+                  print('onSelected called with: $selection');
+                  _autocompleteController?.text = selection;
+                  ref.read(selectedItemProvider.notifier).state = selection;
+                  ref.read(itemTradesPageProvider.notifier).state = 1;
+                  _focusNode.unfocus();
+                },
+                fieldViewBuilder: (
+                  BuildContext context,
+                  TextEditingController textController,
+                  FocusNode focusNode,
+                  VoidCallback onFieldSubmitted,
+                ) {
+                  _autocompleteController = textController;
+                  return TextField(
+                    controller: textController,
+                    focusNode: focusNode,
+                    onSubmitted: (value) {
+                      final q = value.trim();
+                      if (q.isEmpty) return;
+                      final match = names.where((n) => n.toLowerCase() == q.toLowerCase()).toList();
+                      if (match.isNotEmpty) {
+                        textController.text = match.first;
+                        ref.read(selectedItemProvider.notifier).state = match.first;
+                        ref.read(itemTradesPageProvider.notifier).state = 1;
+                        focusNode.unfocus();
+                      }
+                    },
+                    onChanged: (query) {
+                      if (query.trim().isEmpty) {
+                        ref.read(selectedItemProvider.notifier).state = null;
+                      }
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'Search items...',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                      ),
+                    ),
+                  );
+                },
+                optionsViewBuilder: (
+                  BuildContext context,
+                  AutocompleteOnSelected<String> onSelected,
+                  Iterable<String> options,
+                ) {
+                  return Align(
+                    alignment: Alignment.topLeft,
+                    child: Material(
+                      elevation: 4,
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      child: SizedBox(
+                        width: 400,
+                        child: ListView.builder(
+                          padding: EdgeInsets.zero,
+                          shrinkWrap: true,
+                          itemCount: options.length,
+                          itemBuilder: (BuildContext context, int index) {
+                            final option = options.elementAt(index);
+                            return ListTile(
+                              title: Text(option),
+                              onTap: () {
+                                onSelected(option);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  );
                 },
               ),
-            ),
-          ] else
-            Expanded(
-              child: _EmptyState(
-                icon: Icons.search,
-                message: 'Select an item to view trades and price history',
+              loading: () => TextField(
+                enabled: false,
+                decoration: InputDecoration(
+                  hintText: 'Loading items...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                  ),
+                ),
+              ),
+              error: (e, _) => Text(
+                'Failed to load items: $e',
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
               ),
             ),
-        ],
+            if (selectedItem != null) ...[
+              const SizedBox(height: AppSpacing.xl),
+              Expanded(
+                child: _ItemTradesContent(
+                  itemName: selectedItem,
+                  page: page,
+                  onPageChanged: (p) {
+                    ref.read(itemTradesPageProvider.notifier).state = p;
+                  },
+                ),
+              ),
+            ] else
+              Expanded(
+                child: _EmptyState(
+                  icon: Icons.search,
+                  message: 'Select an item to view trades and price history',
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
 }
-
-
 
 
 class _EmptyState extends StatelessWidget {
